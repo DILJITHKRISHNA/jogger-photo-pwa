@@ -131,10 +131,10 @@ rest of the app is unaffected.
 
 ## Known limitations / follow-ups
 
-- **PWA icons & demo photos are placeholder art** (`scripts/generate-icons.mjs`,
-  `scripts/seed.mjs` draw simple shapes with a small hand-rolled PNG encoder —
-  no image libraries needed to try the app). Swap `public/icons/*.png` and
-  the seeded photos for real branding/product photography before shipping.
+- **Demo photos are placeholder art** (`scripts/seed.mjs` draws simple shapes
+  with a small hand-rolled PNG encoder — no image libraries needed to try the
+  app). Swap the seeded photos for real product photography before shipping.
+  (PWA icons in `public/icons/` are the real brand mark, not placeholders.)
 - **`xlsx` (SheetJS) has a known, unpatched-on-npm advisory** (prototype
   pollution / ReDoS). Risk is limited here — it only parses admin-uploaded
   files, behind admin auth — but if that's a hard blocker, SheetJS publish
@@ -152,5 +152,4 @@ npm run dev      # start the dev server
 npm run build    # production build
 npm run start    # run the production build
 npm run seed     # write a small demo catalogue to data/db.json (no-op if it exists)
-npm run icons    # regenerate public/icons/*.png
 ```

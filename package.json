@@ -7,8 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "seed": "node scripts/seed.mjs",
-    "icons": "node scripts/generate-icons.mjs"
+    "seed": "node scripts/seed.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",

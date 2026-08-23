@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 
+import { BrandMark } from "@/components/brand-mark";
 import { ExecutiveMenu } from "@/components/executive/executive-menu";
 import type { ExecutiveSession } from "@/lib/auth/executive";
 
@@ -25,9 +26,7 @@ export function AppHeader({
             <ChevronLeft className="size-5" />
           </Link>
         ) : (
-          <span className="flex size-9 items-center justify-center rounded-full bg-primary text-sm font-extrabold text-primary-foreground">
-            J
-          </span>
+          <BrandMark className="size-9 rounded-xl" />
         )}
         <h1 className="min-w-0 flex-1 truncate text-[15px] font-bold tracking-tight">
           {title}

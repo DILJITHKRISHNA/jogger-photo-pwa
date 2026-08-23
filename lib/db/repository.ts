@@ -328,16 +328,21 @@ export async function getCategoryGallery(
     .map((p) => toView(p, db.categories));
 }
 
-export async function getStockGallery(): Promise<{
+export async function getStockGallery(categorySlug?: string): Promise<{
   items: ProductView[];
   stockDate: string | null;
 }> {
   const db = await readDb();
   if (db.stock.length === 0) return { items: [], stockDate: null };
 
+  const category = categorySlug
+    ? db.categories.find((c) => c.slug === categorySlug)
+    : undefined;
+  if (categorySlug && !category) return { items: [], stockDate: null };
+
   const byKey = new Map(
     db.products
-      .filter((p) => p.active)
+      .filter((p) => p.active && (!category || p.categoryId === category.id))
       .map((p) => [productKey(p.article, p.colour), p] as const)
   );
 
@@ -351,6 +356,17 @@ export async function getStockGallery(): Promise<{
     items: items.sort((a, b) => a.article.localeCompare(b.article)),
     stockDate: db.stock[0]?.stockDate ?? null,
   };
+}
+
+/** Per-category article counts for today's stock, for the Today's Stock category picker. */
+export async function getStockCategoryCounts(): Promise<Map<string, number>> {
+  const { items } = await getStockGallery();
+  const counts = new Map<string, number>();
+  for (const item of items) {
+    if (!item.categorySlug) continue;
+    counts.set(item.categorySlug, (counts.get(item.categorySlug) ?? 0) + 1);
+  }
+  return counts;
 }
 
 export async function getSchemeGallery(): Promise<ProductView[]> {

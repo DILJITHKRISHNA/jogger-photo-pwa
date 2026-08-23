@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { Camera } from "lucide-react";
 
+import { BrandMark } from "@/components/brand-mark";
 import { LoginForm } from "@/components/executive/login-form";
 import { getExecutiveSession } from "@/lib/auth/executive";
 
@@ -14,9 +14,7 @@ export default async function LoginPage() {
   return (
     <div className="flex min-h-dvh flex-col items-center justify-center bg-background px-6 py-10">
       <div className="flex w-full max-w-sm flex-col items-center">
-        <div className="mb-5 flex size-16 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/20">
-          <Camera className="size-8" />
-        </div>
+        <BrandMark className="mb-5 size-16 shadow-lg shadow-primary/20" />
         <h1 className="text-xl font-extrabold tracking-tight">Jogger Photo Hub</h1>
         <p className="mt-1.5 text-center text-sm text-muted-foreground">
           Find. View. Share. Your footwear catalogue, always in your pocket.

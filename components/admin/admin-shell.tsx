@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Camera, LogOut, Menu } from "lucide-react";
+import { LogOut, Menu } from "lucide-react";
 import { toast } from "sonner";
 
+import { BrandMark } from "@/components/brand-mark";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { AdminNavLinks } from "@/components/admin/admin-nav-links";
@@ -12,9 +13,7 @@ import { AdminNavLinks } from "@/components/admin/admin-nav-links";
 function Brand() {
   return (
     <div className="flex items-center gap-2.5 px-1">
-      <span className="flex size-9 items-center justify-center rounded-xl bg-sidebar-primary text-sidebar-primary-foreground">
-        <Camera className="size-4.5" />
-      </span>
+      <BrandMark className="size-9 rounded-xl" />
       <div className="leading-tight">
         <p className="text-sm font-extrabold text-sidebar-foreground">Jogger Admin</p>
         <p className="text-[11px] text-sidebar-foreground/55">Photo &amp; catalogue manager</p>
