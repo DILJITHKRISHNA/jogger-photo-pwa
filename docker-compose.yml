@@ -1,0 +1,77 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: jogger-postgres
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_USER: jogger
+      POSTGRES_PASSWORD: jogger_password
+      POSTGRES_DB: jogger_photo_pwa
+
+    ports:
+      # Mapped to 5434 on the host to avoid clashing with a locally
+      # installed Postgres (default 5432) and with car-wash-erp's own
+      # compose (which uses 5433).
+      - "5434:5432"
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jogger -d jogger_photo_pwa"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: jogger-redis
+    restart: unless-stopped
+
+    ports:
+      # Mapped to 6381 on the host to avoid clashing with another local
+      # Redis (default 6379) and with car-wash-erp's own compose (6380).
+      - "6381:6379"
+
+    volumes:
+      - redis_data:/data
+
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: jogger-api
+    restart: unless-stopped
+
+    env_file:
+      - ./backend/.env
+
+    environment:
+      # Inside the compose network, services reach each other by name.
+      DATABASE_URL: postgresql://jogger:jogger_password@postgres:5432/jogger_photo_pwa?schema=public
+      REDIS_URL: redis://redis:6379
+
+    ports:
+      - "4010:4010"
+
+    volumes:
+      # Local-disk product photos persist across container restarts/rebuilds.
+      - api_uploads:/app/uploads
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  redis_data:
+  api_uploads:

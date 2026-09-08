@@ -1,0 +1,150 @@
+// Jogger Photo Hub — Prisma schema
+// Auth + RBAC (User/Role), photo catalogue (Category/Product), the three
+// daily import feeds (Stock/Scheme/NewModel), Import history and an audit
+// trail — the full backend surface for the app.
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  EXECUTIVE
+}
+
+enum ImportType {
+  STOCK
+  SCHEME
+  NEW_MODEL
+  PHOTOS
+}
+
+model User {
+  id       String @id @default(cuid())
+  name     String
+  phone    String @unique
+  passwordHash String
+  role     Role   @default(EXECUTIVE)
+  active   Boolean @default(true)
+
+  // Hash of the current refresh token so it can be rotated/revoked without
+  // storing the raw token (JWT access + refresh, refresh tokens rotated).
+  hashedRefreshToken String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  auditLogs AuditLog[]
+
+  @@map("users")
+}
+
+model Category {
+  id        String  @id @default(cuid())
+  name      String
+  slug      String  @unique
+  hidden    Boolean @default(false)
+  sortOrder Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  products Product[]
+
+  @@map("categories")
+}
+
+/// Article + Colour = the unique product key throughout the system.
+model Product {
+  id       String    @id @default(cuid())
+  article  String
+  colour   String
+  categoryId String?
+  category Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  photoUrl      String
+  photoFilename String
+  active        Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([article, colour])
+  @@index([categoryId])
+  @@map("products")
+}
+
+/// The latest "Today's Stock" Excel upload — fully replaced on each upload.
+model StockEntry {
+  id        String   @id @default(cuid())
+  article   String
+  colour    String
+  category  String?
+  stockDate DateTime @default(now())
+
+  @@index([article, colour])
+  @@map("stock_entries")
+}
+
+/// Scheme articles — merged (add/update) on each upload, never bulk-cleared.
+model SchemeEntry {
+  id      String   @id @default(cuid())
+  article String
+  colour  String
+  addedAt DateTime @default(now())
+
+  @@unique([article, colour])
+  @@map("scheme_entries")
+}
+
+/// New Model articles — merged (add/update) on each upload.
+model NewModelEntry {
+  id      String   @id @default(cuid())
+  article String
+  colour  String
+  addedAt DateTime @default(now())
+
+  @@unique([article, colour])
+  @@map("new_model_entries")
+}
+
+model ImportRecord {
+  id       String     @id @default(cuid())
+  type     ImportType
+  filename String
+
+  total        Int
+  success      Int
+  errorCount   Int
+  errors       Json     @default("[]")
+  missingPhotos String[]
+
+  uploadedAt DateTime @default(now())
+
+  @@index([type, uploadedAt])
+  @@map("import_records")
+}
+
+model AuditLog {
+  id     String  @id @default(cuid())
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  action   String // e.g. "auth.login", "category.create", "photos.upload"
+  entity   String // e.g. "Auth", "Category", "Product"
+  entityId String?
+  meta     Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([entity, entityId])
+  @@map("audit_logs")
+}
