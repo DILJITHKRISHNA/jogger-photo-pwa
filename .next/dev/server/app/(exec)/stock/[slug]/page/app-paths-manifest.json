@@ -1,0 +1,3 @@
+{
+  "/(exec)/stock/[slug]/page": "app/(exec)/stock/[slug]/page.js"
+}

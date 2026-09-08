@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -41,15 +42,17 @@ export function ExecutiveMenu({ name, employeeId }: { name: string; employeeId: 
         {initial}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-52">
-        <DropdownMenuLabel className="flex items-center gap-2">
-          <User className="size-4 text-muted-foreground" />
-          <div className="flex min-w-0 flex-col">
-            <span className="truncate text-sm font-semibold">{name}</span>
-            <span className="truncate text-xs font-normal text-muted-foreground">
-              ID: {employeeId}
-            </span>
-          </div>
-        </DropdownMenuLabel>
+        <DropdownMenuGroup>
+          <DropdownMenuLabel className="flex items-center gap-2">
+            <User className="size-4 text-muted-foreground" />
+            <div className="flex min-w-0 flex-col">
+              <span className="truncate text-sm font-semibold">{name}</span>
+              <span className="truncate text-xs font-normal text-muted-foreground">
+                ID: {employeeId}
+              </span>
+            </div>
+          </DropdownMenuLabel>
+        </DropdownMenuGroup>
         <DropdownMenuSeparator />
         <DropdownMenuItem variant="destructive" onClick={handleLogout}>
           <LogOut />

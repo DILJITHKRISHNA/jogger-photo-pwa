@@ -1,25 +1,7 @@
-# dependencies
-/node_modules
-
-# next.js
-/.next/
-/out/
-next-env.d.ts
-tsconfig.tsbuildinfo
-
-# production
-/build
-
-# local data & uploads (demo persistence — do not ship real product photos to git)
-/data/db.json
-/public/uploads/products/*
-!/public/uploads/products/.gitkeep
-
-# env
-.env
-.env*.local
-
-# misc
+# Monorepo root — each package ignores its own build output/deps; see
+# frontend/.gitignore. Only OS/editor cruft and stray env files belong here.
 .DS_Store
 *.pem
 npm-debug.log*
+.env
+.env*.local
