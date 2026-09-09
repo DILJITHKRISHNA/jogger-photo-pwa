@@ -1,6 +1,4 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
@@ -18,59 +16,21 @@ export interface PhotoUploadResult {
 const UPLOADS_DIR = path.join(process.cwd(), 'uploads', 'products');
 
 /**
- * Photo storage — local disk by default (uploads/products/, served at
- * /uploads/products/* by ServeStaticModule), automatically switching to
- * S3-compatible object storage once its env vars are set. Callers never
- * touch either directly, only uploadPhoto()/deletePhoto() below.
+ * Photo storage — local disk (uploads/products/, served at
+ * /uploads/products/* by ServeStaticModule). On a host with an ephemeral
+ * filesystem (most PaaS free/starter tiers), attach a persistent disk
+ * mounted at /app/uploads so photos survive redeploys.
  */
 @Injectable()
 export class StorageService {
   private readonly logger = new Logger(StorageService.name);
-  private s3: S3Client | null = null;
-  private bucket = '';
 
-  constructor(private readonly config: ConfigService) {
-    const bucket = this.config.get<string>('S3_BUCKET');
-    const accessKeyId = this.config.get<string>('S3_ACCESS_KEY_ID');
-    const secretAccessKey = this.config.get<string>('S3_SECRET_ACCESS_KEY');
-
-    if (bucket && accessKeyId && secretAccessKey) {
-      this.bucket = bucket;
-      const endpoint = this.config.get<string>('S3_ENDPOINT');
-      this.s3 = new S3Client({
-        region: this.config.get<string>('S3_REGION'),
-        endpoint: endpoint || undefined,
-        forcePathStyle: this.config.get<boolean>('S3_FORCE_PATH_STYLE'),
-        credentials: { accessKeyId, secretAccessKey },
-      });
-      this.logger.log(`Photo storage: S3 bucket "${bucket}"`);
-    } else {
-      this.logger.log('Photo storage: local disk (uploads/products/)');
-    }
-  }
-
-  isCloudConfigured(): boolean {
-    return this.s3 !== null;
+  constructor() {
+    this.logger.log('Photo storage: local disk (uploads/products/)');
   }
 
   async uploadPhoto(input: PhotoUploadInput): Promise<PhotoUploadResult> {
     const filename = `${input.key}.${input.ext}`;
-
-    if (this.s3) {
-      await this.s3.send(
-        new PutObjectCommand({
-          Bucket: this.bucket,
-          Key: `products/${filename}`,
-          Body: input.buffer,
-          ContentType: input.contentType,
-        }),
-      );
-      const endpoint = this.config.get<string>('S3_ENDPOINT');
-      const base = endpoint
-        ? `${endpoint.replace(/\/$/, '')}/${this.bucket}`
-        : `https://${this.bucket}.s3.amazonaws.com`;
-      return { url: `${base}/products/${filename}` };
-    }
 
     await fs.mkdir(UPLOADS_DIR, { recursive: true });
 
@@ -88,15 +48,6 @@ export class StorageService {
   }
 
   async deletePhoto(url: string): Promise<void> {
-    if (this.s3) {
-      const key = url.split(`${this.bucket}/`).pop();
-      if (!key) return;
-      await this.s3
-        .send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }))
-        .catch(() => undefined);
-      return;
-    }
-
     if (!url.startsWith('/uploads/products/')) return;
     const filename = url.replace('/uploads/products/', '');
     await fs.unlink(path.join(UPLOADS_DIR, filename)).catch(() => undefined);

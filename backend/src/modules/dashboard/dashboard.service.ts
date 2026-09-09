@@ -1,9 +1,5 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { RedisService } from '../../redis/redis.service';
-
-const CACHE_KEY = 'dashboard:stats';
-const CACHE_TTL_SECONDS = 10;
 
 export interface DashboardStats {
   photosCount: number;
@@ -22,15 +18,9 @@ export interface DashboardStats {
 
 @Injectable()
 export class DashboardService {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly redis: RedisService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async getStats(): Promise<DashboardStats> {
-    const cached = await this.redis.get<DashboardStats>(CACHE_KEY);
-    if (cached) return cached;
-
     const [
       products,
       categoriesCount,
@@ -78,7 +68,7 @@ export class DashboardService {
       return stockRows.filter((s) => !set.has(`${s.article}::${s.colour}`)).length;
     });
 
-    const stats: DashboardStats = {
+    return {
       photosCount: products.length,
       activeArticleCount: photoKeys.size,
       categoriesCount,
@@ -92,8 +82,5 @@ export class DashboardService {
       lastNewModelUpload: latestNewModel?.uploadedAt.toISOString() ?? null,
       recentImportErrorCount: recentImports.reduce((sum, i) => sum + i.errorCount, 0),
     };
-
-    await this.redis.set(CACHE_KEY, stats, CACHE_TTL_SECONDS);
-    return stats;
   }
 }

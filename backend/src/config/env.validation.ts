@@ -17,15 +17,6 @@ export const envValidationSchema = Joi.object({
   JWT_REFRESH_SECRET: Joi.string().min(16).required(),
   JWT_REFRESH_EXPIRES_IN: Joi.string().default('30d'),
 
-  REDIS_URL: Joi.string().default('redis://localhost:6381'),
-
-  S3_ENDPOINT: Joi.string().allow('').optional(),
-  S3_REGION: Joi.string().default('us-east-1'),
-  S3_BUCKET: Joi.string().allow('').optional(),
-  S3_ACCESS_KEY_ID: Joi.string().allow('').optional(),
-  S3_SECRET_ACCESS_KEY: Joi.string().allow('').optional(),
-  S3_FORCE_PATH_STYLE: Joi.boolean().default(true),
-
   THROTTLE_TTL_MS: Joi.number().default(60000),
   THROTTLE_LIMIT: Joi.number().default(100),
   AUTH_THROTTLE_TTL_MS: Joi.number().default(60000),

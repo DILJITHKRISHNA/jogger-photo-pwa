@@ -22,10 +22,17 @@ export class AuthController {
 
   private setRefreshCookie(res: Response, refreshToken: string) {
     const apiPrefix = this.config.get<string>('API_PREFIX');
+    const isProduction = this.config.get('NODE_ENV') === 'production';
     res.cookie(REFRESH_COOKIE_NAME, refreshToken, {
       httpOnly: true,
-      secure: this.config.get('NODE_ENV') === 'production',
-      sameSite: 'none',
+      // Production: frontend (Vercel) and API (Render) are different sites,
+      // so the cookie needs SameSite=None — which browsers only honour
+      // alongside Secure. Dev: localhost:3010 → localhost:4010 is same-site
+      // (only the port differs), so Lax works over plain http without
+      // needing Secure — SameSite=None without Secure would just be
+      // silently dropped by the browser here.
+      secure: isProduction,
+      sameSite: isProduction ? 'none' : 'lax',
       path: `/${apiPrefix}/auth`,
       maxAge: 30 * DAY_MS,
     });

@@ -8,7 +8,6 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { envValidationSchema } from './config/env.validation';
 import { PrismaModule } from './prisma/prisma.module';
-import { RedisModule } from './redis/redis.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { UsersModule } from './modules/users/users.module';
 import { AuthModule } from './modules/auth/auth.module';
@@ -36,14 +35,12 @@ import { RolesGuard } from './common/guards/roles.guard';
     ThrottlerModule.forRoot({
       throttlers: [{ ttl: 60_000, limit: 100 }],
     }),
-    // Local-disk product photos, served at /uploads/products/<file> —
-    // matches the URL shape StorageService returns when S3 isn't configured.
+    // Local-disk product photos, served at /uploads/products/<file>.
     ServeStaticModule.forRoot({
       rootPath: path.join(process.cwd(), 'uploads'),
       serveRoot: '/uploads',
     }),
     PrismaModule,
-    RedisModule,
     AuditModule,
     UsersModule,
     AuthModule,
