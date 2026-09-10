@@ -24,6 +24,7 @@ enum ImportType {
   SCHEME
   NEW_MODEL
   PHOTOS
+  MASTER
 }
 
 model User {
@@ -79,6 +80,19 @@ model Product {
   @@unique([article, colour])
   @@index([categoryId])
   @@map("products")
+}
+
+/// Master catalogue Excel — maps Article + Colour to a category. Fully
+/// replaced on each upload; product photos are categorised from this list.
+model MasterEntry {
+  id       String @id @default(cuid())
+  article  String
+  colour   String
+  category String
+
+  @@unique([article, colour])
+  @@index([article, colour])
+  @@map("master_entries")
 }
 
 /// The latest "Today's Stock" Excel upload — fully replaced on each upload.

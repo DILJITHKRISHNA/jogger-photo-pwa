@@ -224,6 +224,11 @@ async function main() {
   }
   console.log(`Seeded ${DEMO_PRODUCTS.length} demo products with placeholder photos.`);
 
+  await prisma.masterEntry.deleteMany({});
+  await prisma.masterEntry.createMany({
+    data: DEMO_PRODUCTS.map(([article, colour, category]) => ({ article, colour, category })),
+  });
+
   // --- stock (replace) ---
   await prisma.stockEntry.deleteMany({});
   await prisma.stockEntry.createMany({
@@ -245,13 +250,24 @@ async function main() {
       create: { article, colour },
     });
   }
-  console.log(`Seeded ${STOCK_ROWS.length} stock rows, ${SCHEME_ROWS.length} scheme rows, ${NEW_MODEL_ROWS.length} new model rows.`);
+  console.log(
+    `Seeded ${DEMO_PRODUCTS.length} master rows, ${STOCK_ROWS.length} stock rows, ${SCHEME_ROWS.length} scheme rows, ${NEW_MODEL_ROWS.length} new model rows.`,
+  );
 
   // --- import history entries so the admin panel isn't empty on first run ---
   const existingImports = await prisma.importRecord.count();
   if (existingImports === 0) {
     await prisma.importRecord.createMany({
       data: [
+        {
+          type: 'MASTER',
+          filename: 'demo-master-seed.xlsx',
+          total: DEMO_PRODUCTS.length,
+          success: DEMO_PRODUCTS.length,
+          errorCount: 0,
+          errors: [],
+          missingPhotos: [],
+        },
         {
           type: 'STOCK',
           filename: 'demo-stock-seed.xlsx',

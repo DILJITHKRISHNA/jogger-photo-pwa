@@ -88,7 +88,10 @@ function isBlankRow(row: unknown[]): boolean {
  */
 @Injectable()
 export class ExcelService {
-  parseProductExcel(buffer: Buffer): ParsedExcelResult {
+  parseProductExcel(
+    buffer: Buffer,
+    options?: { requireCategory?: boolean },
+  ): ParsedExcelResult {
     let workbook: XLSX.WorkBook;
     try {
       workbook = XLSX.read(buffer, { type: 'buffer' });
@@ -122,6 +125,14 @@ export class ExcelService {
         fatal: 'Could not find "Article" and "Colour" columns. Check the header row and try again.',
       };
     }
+    if (options?.requireCategory && header.columns.category === undefined) {
+      return {
+        total: 0,
+        rows: [],
+        errors: [],
+        fatal: 'Could not find a "Category" column. Master Excel needs Article, Colour and Category.',
+      };
+    }
 
     const rows: ParsedExcelRow[] = [];
     const errors: ImportErrorRow[] = [];
@@ -153,6 +164,10 @@ export class ExcelService {
         errors.push({ row: rowNumber, message: 'Missing Colour', article });
         continue;
       }
+      if (options?.requireCategory && !category) {
+        errors.push({ row: rowNumber, message: 'Missing Category', article, colour });
+        continue;
+      }
 
       rows.push({ row: rowNumber, article, colour, category });
     }
@@ -160,8 +175,17 @@ export class ExcelService {
     return { total, rows, errors };
   }
 
-  buildTemplate(type: 'stock' | 'scheme' | 'new-model'): Buffer {
+  buildTemplate(type: 'stock' | 'scheme' | 'new-model' | 'master'): Buffer {
     const templates = {
+      master: {
+        sheetName: 'MASTER EXCEL',
+        header: ['Article', 'Colour', 'Category'],
+        sample: [
+          ['1001', 'BLACK', 'PU Gents'],
+          ['1001', 'BROWN', 'PU Gents'],
+          ['111', 'LGRY', 'EVA'],
+        ],
+      },
       stock: {
         sheetName: 'STOCK EXCEL',
         header: ['Article', 'Colour', 'Category'],
@@ -198,6 +222,21 @@ export class ExcelService {
 
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, config.sheetName);
+
+    if (type === 'master') {
+      const instructions = XLSX.utils.aoa_to_sheet([
+        ['How to fill the Master Excel'],
+        [''],
+        ['Keep the first row as the header: Article | Colour | Category'],
+        ['Add one row for every Article + Colour that has (or will have) a photo.'],
+        ['The photo filename must match: ARTICLE COLOUR.jpg  e.g. 1001 BLACK.jpg'],
+        ['Category is the group name used in Bulk Photos (e.g. PU Gents, EVA).'],
+        ['The sample rows on the first sheet are examples — replace them with your real data.'],
+        ['Save as .xlsx and import the file on the Master Excel screen.'],
+      ]);
+      instructions['!cols'] = [{ wch: 90 }];
+      XLSX.utils.book_append_sheet(workbook, instructions, 'INSTRUCTIONS');
+    }
 
     return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
   }

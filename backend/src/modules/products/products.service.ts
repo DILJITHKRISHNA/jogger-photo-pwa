@@ -3,6 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { normalizeArticle, normalizeColour } from '../../common/util/product-key';
 import { fileSafeKey, parsePhotoFilename } from '../../common/util/parse-photo-filename';
+import { slugify } from '../categories/categories.service';
 
 export interface PhotoUploadFile {
   originalname: string;
@@ -49,11 +50,32 @@ export class ProductsService {
   /**
    * Bulk photo upload — filenames must be "ARTICLE COLOUR.jpg" so Article +
    * Colour are read straight from the name; nothing is typed per photo.
+   * Category is taken from the Master Excel (Article + Colour), not the upload.
    * Uploading again for the same Article+Colour replaces the old photo.
    */
-  async uploadPhotos(files: PhotoUploadFile[], categoryId: string | null) {
+  async uploadPhotos(files: PhotoUploadFile[]) {
     const errors: { row: number; message: string; article?: string; colour?: string }[] = [];
-    const uploaded: { article: string; colour: string; photoUrl: string; replaced: boolean }[] = [];
+    const uploaded: {
+      article: string;
+      colour: string;
+      photoUrl: string;
+      replaced: boolean;
+      uncategorised: boolean;
+    }[] = [];
+
+    const [masterRows, categories] = await Promise.all([
+      this.prisma.masterEntry.findMany(),
+      this.prisma.category.findMany({ select: { id: true, slug: true } }),
+    ]);
+    const hasMaster = masterRows.length > 0;
+    const categoryIdBySlug = new Map(categories.map((c) => [c.slug, c.id]));
+    const categoryIdByKey = new Map<string, string | null>();
+    for (const row of masterRows) {
+      categoryIdByKey.set(
+        `${row.article}::${row.colour}`,
+        categoryIdBySlug.get(slugify(row.category)) ?? null,
+      );
+    }
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
@@ -77,6 +99,10 @@ export class ProductsService {
           contentType: file.mimetype || CONTENT_TYPES[parsed.ext] || 'application/octet-stream',
         });
 
+        const categoryId = hasMaster
+          ? (categoryIdByKey.get(`${parsed.article}::${parsed.colour}`) ?? null)
+          : (existing?.categoryId ?? null);
+
         await this.prisma.product.upsert({
           where: { article_colour: { article: parsed.article, colour: parsed.colour } },
           create: {
@@ -87,7 +113,7 @@ export class ProductsService {
             photoFilename: parsed.original,
           },
           update: {
-            categoryId: categoryId ?? undefined,
+            categoryId,
             photoUrl: url,
             photoFilename: parsed.original,
             active: true,
@@ -99,6 +125,7 @@ export class ProductsService {
           colour: parsed.colour,
           photoUrl: url,
           replaced: Boolean(existing),
+          uncategorised: !categoryId,
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Upload failed';

@@ -1,5 +1,4 @@
 import {
-  Body,
   Controller,
   Delete,
   Get,
@@ -49,15 +48,15 @@ export class ProductsController {
   @UseInterceptors(FilesInterceptor('files', 200, { limits: { fileSize: 15 * 1024 * 1024 } }))
   async uploadPhotos(
     @UploadedFiles() files: Array<Express.Multer.File>,
-    @Body('categoryId') categoryId: string | undefined,
     @CurrentUser() user: AuthenticatedUser,
   ) {
     if (!files || files.length === 0) {
       throw new BadRequestException('No photos were selected');
     }
 
-    const { uploaded, errors } = await this.products.uploadPhotos(files, categoryId ?? null);
+    const { uploaded, errors } = await this.products.uploadPhotos(files);
 
+    const uncategorised = uploaded.filter((u) => u.uncategorised);
     const record = await this.imports.create({
       type: 'PHOTOS',
       filename: files.length === 1 ? files[0].originalname : `${files.length} photos`,
@@ -65,7 +64,7 @@ export class ProductsController {
       success: uploaded.length,
       errorCount: errors.length,
       errors,
-      missingPhotos: [],
+      missingPhotos: uncategorised.map((u) => `${u.article} ${u.colour}`),
     });
 
     await this.audit.record({
@@ -84,6 +83,7 @@ export class ProductsController {
       errorCount: errors.length,
       errors,
       uploaded,
+      uncategorisedCount: uncategorised.length,
     };
   }
 }

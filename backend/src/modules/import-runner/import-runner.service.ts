@@ -3,21 +3,27 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { ExcelService } from '../excel/excel.service';
 import { ImportsService } from '../imports/imports.service';
 import { normalizeArticle, normalizeColour, labelFor } from '../../common/util/product-key';
+import { slugify } from '../categories/categories.service';
 import type { ImportRecord } from '../../generated/prisma/client';
 
-export type ImportKind = 'stock' | 'scheme' | 'new-model';
+export type ImportKind = 'stock' | 'scheme' | 'new-model' | 'master';
 
 export interface ImportOutcome {
   fatal?: string;
   record?: ImportRecord;
 }
 
-const TYPE_MAP = { stock: 'STOCK', scheme: 'SCHEME', 'new-model': 'NEW_MODEL' } as const;
+const TYPE_MAP = {
+  stock: 'STOCK',
+  scheme: 'SCHEME',
+  'new-model': 'NEW_MODEL',
+  master: 'MASTER',
+} as const;
 
 /**
- * Shared Excel import pipeline for Stock / Scheme / New Model uploads:
- * validate → import/update the matching table → cross-check against the
- * photo catalogue → record the result for Import History.
+ * Shared Excel import pipeline for Stock / Scheme / New Model / Master
+ * uploads: validate → import/update the matching table → cross-check
+ * against the photo catalogue → record the result for Import History.
  */
 @Injectable()
 export class ImportRunnerService {
@@ -28,7 +34,9 @@ export class ImportRunnerService {
   ) {}
 
   async run(kind: ImportKind, filename: string, buffer: Buffer): Promise<ImportOutcome> {
-    const parsed = this.excel.parseProductExcel(buffer);
+    const parsed = this.excel.parseProductExcel(buffer, {
+      requireCategory: kind === 'master',
+    });
     if (parsed.fatal) return { fatal: parsed.fatal };
 
     const rows = parsed.rows.map((r) => ({
@@ -51,7 +59,9 @@ export class ImportRunnerService {
       ),
     );
 
-    if (kind === 'stock') {
+    if (kind === 'master') {
+      await this.importMaster(rows);
+    } else if (kind === 'stock') {
       await this.prisma.$transaction([
         this.prisma.stockEntry.deleteMany({}),
         this.prisma.stockEntry.createMany({
@@ -91,5 +101,78 @@ export class ImportRunnerService {
     });
 
     return { record };
+  }
+
+  /** Fully replace the master list, ensure categories exist, recategorise photos. */
+  private async importMaster(
+    rows: Array<{ article: string; colour: string; category: string | null }>,
+  ) {
+    const names = [
+      ...new Set(rows.map((r) => r.category?.trim()).filter((name): name is string => Boolean(name))),
+    ];
+    const existing = await this.prisma.category.findMany();
+    const bySlug = new Map(existing.map((c) => [c.slug, c]));
+    let sortOrder = existing.length;
+
+    for (const name of names) {
+      const slug = slugify(name);
+      if (!slug || bySlug.has(slug)) continue;
+      const created = await this.prisma.category.create({
+        data: { name, slug, sortOrder },
+      });
+      bySlug.set(slug, created);
+      sortOrder += 1;
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.masterEntry.deleteMany({}),
+      this.prisma.masterEntry.createMany({
+        data: rows.map((r) => ({
+          article: r.article,
+          colour: r.colour,
+          category: (r.category ?? '').trim(),
+        })),
+      }),
+    ]);
+
+    await this.applyMasterCategories();
+  }
+
+  /** Assign every product photo's category from the current master Excel. */
+  private async applyMasterCategories() {
+    const [master, categories] = await Promise.all([
+      this.prisma.masterEntry.findMany(),
+      this.prisma.category.findMany(),
+    ]);
+    const categoryIdBySlug = new Map(categories.map((c) => [c.slug, c.id]));
+    const categoryIdByKey = new Map<string, string | null>();
+    for (const row of master) {
+      categoryIdByKey.set(
+        `${row.article}::${row.colour}`,
+        categoryIdBySlug.get(slugify(row.category)) ?? null,
+      );
+    }
+
+    const products = await this.prisma.product.findMany({
+      select: { id: true, article: true, colour: true, categoryId: true },
+    });
+
+    const updates = products.filter((product) => {
+      const next = categoryIdByKey.get(`${product.article}::${product.colour}`) ?? null;
+      return next !== product.categoryId;
+    });
+
+    if (updates.length === 0) return;
+
+    await this.prisma.$transaction(
+      updates.map((product) =>
+        this.prisma.product.update({
+          where: { id: product.id },
+          data: {
+            categoryId: categoryIdByKey.get(`${product.article}::${product.colour}`) ?? null,
+          },
+        }),
+      ),
+    );
   }
 }
