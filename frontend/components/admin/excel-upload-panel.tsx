@@ -20,18 +20,20 @@ import { apiFetch, ApiError, downloadAuthenticated } from "@/lib/api-client";
 import { formatRelativeTime } from "@/lib/format";
 import type { ImportRecord, ImportType } from "@/lib/types";
 
-export type ExcelKind = "stock" | "scheme" | "new-model";
+export type ExcelKind = "stock" | "scheme" | "new-model" | "master";
 
 const ENDPOINT: Record<ExcelKind, string> = {
   stock: "/stock",
   scheme: "/scheme",
   "new-model": "/new-models",
+  master: "/master",
 };
 
 const RECORD_TYPE: Record<ExcelKind, ImportType> = {
   stock: "STOCK",
   scheme: "SCHEME",
   "new-model": "NEW_MODEL",
+  master: "MASTER",
 };
 
 export function ExcelUploadPanel({

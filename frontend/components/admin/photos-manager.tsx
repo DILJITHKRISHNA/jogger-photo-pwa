@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { AlertTriangle, CheckCircle2, ImageOff, Loader2, Trash2, UploadCloud } from "lucide-react";
+import Link from "next/link";
+import { AlertTriangle, CheckCircle2, CheckSquare, ImageOff, Loader2, Square, Trash2, UploadCloud, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -29,6 +30,7 @@ interface UploadSummary {
   newCount: number;
   replacedCount: number;
   errorCount: number;
+  uncategorisedCount?: number;
   errors: { row: number; message: string }[];
 }
 
@@ -36,17 +38,16 @@ export function PhotosManager() {
   const { categories, loading: categoriesLoading } = useCategories(true);
   const { products, setProducts, loading: productsLoading, refresh } = useAdminProducts();
 
-  const [categoryId, setCategoryId] = useState<string>("");
   const [files, setFiles] = useState<File[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [lastSummary, setLastSummary] = useState<UploadSummary | null>(null);
   const [filterCategoryId, setFilterCategoryId] = useState<string>("all");
-  const [pendingDelete, setPendingDelete] = useState<Product | null>(null);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [pendingDelete, setPendingDelete] = useState<Product | "selected" | null>(null);
   const [deleting, setDeleting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-
-  const effectiveCategoryId = categoryId || categories[0]?.id || "";
 
   const categoryName = (id: string | null) =>
     categories.find((c) => c.id === id)?.name ?? "Uncategorised";
@@ -66,15 +67,10 @@ export function PhotosManager() {
       toast.error("Select at least one photo first");
       return;
     }
-    if (!effectiveCategoryId) {
-      toast.error("Choose a category for these photos");
-      return;
-    }
 
     setUploading(true);
     try {
       const formData = new FormData();
-      formData.set("categoryId", effectiveCategoryId);
       files.forEach((file) => formData.append("files", file));
 
       const data = await apiFetch<UploadSummary>("/products/photos", {
@@ -99,13 +95,37 @@ export function PhotosManager() {
     }
   }
 
+  function toggleSelected(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function exitSelectMode() {
+    setSelectMode(false);
+    setSelected(new Set());
+  }
+
   async function handleDelete() {
     if (!pendingDelete) return;
+    const ids =
+      pendingDelete === "selected" ? [...selected] : [pendingDelete.id];
+    if (ids.length === 0) return;
+
     setDeleting(true);
     try {
-      await apiFetch(`/products/${pendingDelete.id}`, { method: "DELETE" });
-      setProducts((prev) => prev.filter((p) => p.id !== pendingDelete.id));
-      toast.success("Photo deleted");
+      if (ids.length === 1) {
+        await apiFetch(`/products/${ids[0]}`, { method: "DELETE" });
+      } else {
+        await Promise.all(ids.map((id) => apiFetch(`/products/${id}`, { method: "DELETE" })));
+      }
+      setProducts((prev) => prev.filter((p) => !ids.includes(p.id)));
+      setSelected(new Set());
+      setSelectMode(false);
+      toast.success(ids.length === 1 ? "Photo deleted" : `${ids.length} photos deleted`);
     } catch (error) {
       toast.error(error instanceof ApiError ? error.message : "Delete failed");
     } finally {
@@ -119,28 +139,14 @@ export function PhotosManager() {
       <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
         <h2 className="text-sm font-bold">Bulk photo upload</h2>
         <p className="mt-1 text-xs text-muted-foreground">
-          Filenames must be <span className="font-mono font-semibold">ARTICLE COLOUR.jpg</span> —
-          e.g. <span className="font-mono">1001 BRWN.jpg</span>. Article + Colour are read straight
-          from the name, so nothing to type per photo.
+          Upload every photo in one go. Filenames must be{" "}
+          <span className="font-mono font-semibold">ARTICLE COLOUR.jpg</span> — e.g.{" "}
+          <span className="font-mono">1001 BRWN.jpg</span>. Categories come from the{" "}
+          <Link href="/admin/upload/master" className="font-semibold text-primary underline">
+            Master Excel
+          </Link>
+          , not from this screen.
         </p>
-
-        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
-          <span className="text-xs font-semibold text-muted-foreground">Category</span>
-          <Select value={effectiveCategoryId} onValueChange={(value) => setCategoryId(value ?? "")}>
-            <SelectTrigger className="w-full sm:w-56">
-              <SelectValue placeholder="Choose a category">
-                {(value: string) => categoryName(value || null)}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              {categories.map((category) => (
-                <SelectItem key={category.id} value={category.id}>
-                  {category.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
 
         <label
           onDragOver={(e) => {
@@ -205,6 +211,21 @@ export function PhotosManager() {
                 </AlertDescription>
               )}
             </Alert>
+            {(lastSummary.uncategorisedCount ?? 0) > 0 && (
+              <Alert variant="warning">
+                <AlertTriangle />
+                <AlertTitle>
+                  {lastSummary.uncategorisedCount} photo{lastSummary.uncategorisedCount === 1 ? "" : "s"} had no Master Excel match
+                </AlertTitle>
+                <AlertDescription>
+                  They were saved as Uncategorised. Upload or update the{" "}
+                  <Link href="/admin/upload/master" className="font-semibold underline">
+                    Master Excel
+                  </Link>{" "}
+                  with Article, Colour and Category so they appear in the right Bulk Photos group.
+                </AlertDescription>
+              </Alert>
+            )}
           </div>
         )}
       </div>
@@ -212,22 +233,60 @@ export function PhotosManager() {
       <div>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-bold">Photo library ({filteredProducts.length})</h2>
-          <Select value={filterCategoryId} onValueChange={(value) => setFilterCategoryId(value ?? "all")}>
-            <SelectTrigger className="w-44">
-              <SelectValue placeholder="All categories">
-                {(value: string) => (value === "all" || !value ? "All categories" : categoryName(value))}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All categories</SelectItem>
-              {categories.map((category) => (
-                <SelectItem key={category.id} value={category.id}>
-                  {category.name}
-                </SelectItem>
+          <div className="flex flex-wrap items-center gap-2">
+            <Select value={filterCategoryId} onValueChange={(value) => setFilterCategoryId(value ?? "all")}>
+              <SelectTrigger className="w-44">
+                <SelectValue placeholder="All categories">
+                  {(value: string) => (value === "all" || !value ? "All categories" : categoryName(value))}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All categories</SelectItem>
+                {categories.map((category) => (
+                  <SelectItem key={category.id} value={category.id}>
+                    {category.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {filteredProducts.length > 0 &&
+              (selectMode ? (
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSelected(new Set(filteredProducts.map((p) => p.id)))}
+                  >
+                    <CheckSquare /> All
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => setSelected(new Set())}>
+                    <Square /> None
+                  </Button>
+                  <Button variant="ghost" size="icon-sm" onClick={exitSelectMode} aria-label="Cancel selection">
+                    <X />
+                  </Button>
+                </div>
+              ) : (
+                <Button variant="secondary" size="sm" onClick={() => setSelectMode(true)}>
+                  <CheckSquare /> Select
+                </Button>
               ))}
-            </SelectContent>
-          </Select>
+          </div>
         </div>
+
+        {selectMode && (
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-muted/40 px-3 py-2">
+            <p className="text-xs font-semibold text-muted-foreground">{selected.size} selected</p>
+            <Button
+              variant="destructive"
+              size="sm"
+              disabled={selected.size === 0}
+              onClick={() => setPendingDelete("selected")}
+            >
+              <Trash2 /> Delete selected
+            </Button>
+          </div>
+        )}
 
         {categoriesLoading || productsLoading ? (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
@@ -245,25 +304,61 @@ export function PhotosManager() {
             {filteredProducts.map((product) => (
               <div
                 key={product.id}
-                className="group relative overflow-hidden rounded-xl border border-border bg-card shadow-sm"
+                className={cn(
+                  "relative overflow-hidden rounded-xl border bg-card shadow-sm",
+                  selectMode && selected.has(product.id) ? "border-primary ring-2 ring-primary/30" : "border-border",
+                )}
               >
-                <div className="aspect-square overflow-hidden bg-muted">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={resolveMediaUrl(product.photoUrl)}
-                    alt={`${product.article} ${product.colour}`}
-                    loading="lazy"
-                    className="h-full w-full object-cover"
-                  />
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setPendingDelete(product)}
-                  className="absolute top-1.5 right-1.5 flex size-7 items-center justify-center rounded-full bg-black/55 text-white opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
-                  aria-label="Delete photo"
-                >
-                  <Trash2 className="size-3.5" />
-                </button>
+                {selectMode ? (
+                  <button
+                    type="button"
+                    className="block w-full text-left"
+                    onClick={() => toggleSelected(product.id)}
+                  >
+                    <div className="aspect-square overflow-hidden bg-muted">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={resolveMediaUrl(product.photoUrl)}
+                        alt={`${product.article} ${product.colour}`}
+                        loading="lazy"
+                        className="h-full w-full object-cover"
+                      />
+                    </div>
+                  </button>
+                ) : (
+                  <div className="aspect-square overflow-hidden bg-muted">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={resolveMediaUrl(product.photoUrl)}
+                      alt={`${product.article} ${product.colour}`}
+                      loading="lazy"
+                      className="h-full w-full object-cover"
+                    />
+                  </div>
+                )}
+                {selectMode ? (
+                  <button
+                    type="button"
+                    onClick={() => toggleSelected(product.id)}
+                    className="absolute top-1.5 right-1.5 flex size-8 items-center justify-center rounded-full bg-black/70 text-white shadow-sm backdrop-blur-sm"
+                    aria-label={selected.has(product.id) ? "Deselect photo" : "Select photo"}
+                  >
+                    {selected.has(product.id) ? (
+                      <CheckSquare className="size-3.5" />
+                    ) : (
+                      <Square className="size-3.5" />
+                    )}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setPendingDelete(product)}
+                    className="absolute top-1.5 right-1.5 flex size-8 items-center justify-center rounded-full bg-black/70 text-white shadow-sm backdrop-blur-sm hover:bg-destructive"
+                    aria-label={`Delete photo ${product.article} ${product.colour}`}
+                  >
+                    <Trash2 className="size-3.5" />
+                  </button>
+                )}
                 <div className="p-2">
                   <p className="truncate text-xs font-bold">{product.article}</p>
                   <p className="truncate text-[11px] text-muted-foreground">
@@ -280,10 +375,14 @@ export function PhotosManager() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              Delete photo {pendingDelete?.article} {pendingDelete?.colour}?
+              {pendingDelete === "selected"
+                ? `Delete ${selected.size} photo${selected.size === 1 ? "" : "s"}?`
+                : `Delete photo ${pendingDelete?.article} ${pendingDelete?.colour}?`}
             </DialogTitle>
             <DialogDescription>
-              It will disappear from Search, Bulk Photos, Stock, Scheme and New Model immediately.
+              {pendingDelete === "selected"
+                ? "They will disappear from Search, Bulk Photos, Stock, Scheme and New Model immediately."
+                : "It will disappear from Search, Bulk Photos, Stock, Scheme and New Model immediately."}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

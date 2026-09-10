@@ -63,7 +63,7 @@ export interface NewModelEntry {
   addedAt: string;
 }
 
-export type ImportType = "STOCK" | "SCHEME" | "NEW_MODEL" | "PHOTOS";
+export type ImportType = "STOCK" | "SCHEME" | "NEW_MODEL" | "PHOTOS" | "MASTER";
 
 export interface ImportErrorRow {
   row: number;

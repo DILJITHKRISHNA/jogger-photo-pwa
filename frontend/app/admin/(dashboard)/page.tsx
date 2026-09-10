@@ -27,6 +27,7 @@ const IMPORT_TYPE_LABEL: Record<ImportType, string> = {
   SCHEME: "Scheme Excel",
   NEW_MODEL: "New Model Excel",
   PHOTOS: "Photo upload",
+  MASTER: "Master Excel",
 };
 
 export default function AdminDashboardPage() {
@@ -122,9 +123,9 @@ export default function AdminDashboardPage() {
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
             {[
               { href: "/admin/photos", label: "Upload Photos", icon: ImagePlus },
+              { href: "/admin/upload/master", label: "Upload Master Excel", icon: FolderTree },
               { href: "/admin/upload/stock", label: "Upload Stock Excel", icon: PackageCheck },
               { href: "/admin/upload/scheme", label: "Upload Scheme Excel", icon: Tag },
-              { href: "/admin/upload/new-model", label: "Upload New Model", icon: Sparkles },
             ].map((action) => {
               const Icon = action.icon;
               return (

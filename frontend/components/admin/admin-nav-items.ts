@@ -7,6 +7,7 @@ import {
   FolderTree,
   SearchCheck,
   History,
+  FileSpreadsheet,
   type LucideIcon,
 } from "lucide-react";
 
@@ -20,6 +21,7 @@ export interface AdminNavItem {
 export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard, exact: true },
   { href: "/admin/photos", label: "Photos", icon: ImagePlus },
+  { href: "/admin/upload/master", label: "Master Excel", icon: FileSpreadsheet },
   { href: "/admin/upload/stock", label: "Stock Excel", icon: PackageCheck },
   { href: "/admin/upload/scheme", label: "Scheme Excel", icon: Tag },
   { href: "/admin/upload/new-model", label: "New Model Excel", icon: Sparkles },

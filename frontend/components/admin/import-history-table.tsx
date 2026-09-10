@@ -25,11 +25,13 @@ const TYPE_LABEL: Record<ImportType, string> = {
   SCHEME: "Scheme Excel",
   NEW_MODEL: "New Model Excel",
   PHOTOS: "Photo upload",
+  MASTER: "Master Excel",
 };
 
 const FILTERS: Array<{ value: ImportType | "all"; label: string }> = [
   { value: "all", label: "All" },
   { value: "PHOTOS", label: "Photos" },
+  { value: "MASTER", label: "Master" },
   { value: "STOCK", label: "Stock" },
   { value: "SCHEME", label: "Scheme" },
   { value: "NEW_MODEL", label: "New Model" },
