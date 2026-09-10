@@ -70,6 +70,7 @@ export function ExcelUploadPanel({
     setDownloadingTemplate(true);
     try {
       await downloadAuthenticated(`${ENDPOINT[type]}/template`, `${type}-template.xlsx`);
+      toast.success("Template downloaded — fill it in, then import it below");
     } catch {
       toast.error("Couldn't download the template");
     } finally {
@@ -128,10 +129,15 @@ export function ExcelUploadPanel({
             <p className="mt-1 text-xs text-muted-foreground">Columns: {columnsHint}</p>
             <p className="mt-0.5 text-xs text-muted-foreground">{replaceSemantics}</p>
           </div>
-          <Button variant="outline" size="sm" disabled={downloadingTemplate} onClick={handleDownloadTemplate}>
-            {downloadingTemplate ? <Loader2 className="animate-spin" /> : <Download />} Template
+          <Button variant="outline" disabled={downloadingTemplate} onClick={handleDownloadTemplate}>
+            {downloadingTemplate ? <Loader2 className="animate-spin" /> : <Download />}
+            Download template
           </Button>
         </div>
+        <p className="mt-3 rounded-xl border border-dashed border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          Download the Excel template, enter one row per Article + Colour, then import that file
+          here. Sample rows in the file are examples — replace them with your real data.
+        </p>
 
         <label
           onDragOver={(e) => {

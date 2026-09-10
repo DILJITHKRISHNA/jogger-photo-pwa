@@ -188,7 +188,11 @@ export async function downloadAuthenticated(path: string, filename: string): Pro
     throw new ApiError(response.status, await parseErrorMessage(response));
   }
 
-  const blob = await response.blob();
+    const blob = new Blob([await response.arrayBuffer()], {
+      type:
+        response.headers.get("Content-Type") ||
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;

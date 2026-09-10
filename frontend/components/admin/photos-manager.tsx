@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, CheckCircle2, CheckSquare, ImageOff, Loader2, Square, Trash2, UploadCloud, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, CheckSquare, Download, ImageOff, Loader2, Square, Trash2, UploadCloud, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
-import { apiFetch, ApiError, resolveMediaUrl } from "@/lib/api-client";
+import { apiFetch, ApiError, downloadAuthenticated, resolveMediaUrl } from "@/lib/api-client";
 import { useCategories } from "@/features/catalogue/use-categories";
 import { useAdminProducts } from "@/features/admin/use-products";
 import { cn } from "@/lib/utils";
@@ -41,6 +41,7 @@ export function PhotosManager() {
   const [files, setFiles] = useState<File[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [downloadingTemplate, setDownloadingTemplate] = useState(false);
   const [lastSummary, setLastSummary] = useState<UploadSummary | null>(null);
   const [filterCategoryId, setFilterCategoryId] = useState<string>("all");
   const [selectMode, setSelectMode] = useState(false);
@@ -56,6 +57,18 @@ export function PhotosManager() {
     if (filterCategoryId === "all") return products;
     return products.filter((p) => p.categoryId === filterCategoryId);
   }, [products, filterCategoryId]);
+
+  async function handleDownloadMasterTemplate() {
+    setDownloadingTemplate(true);
+    try {
+      await downloadAuthenticated("/master/template", "master-template.xlsx");
+      toast.success("Master Excel template downloaded");
+    } catch {
+      toast.error("Couldn't download the template");
+    } finally {
+      setDownloadingTemplate(false);
+    }
+  }
 
   function addFiles(list: FileList | File[]) {
     const incoming = Array.from(list).filter((f) => f.type.startsWith("image/"));
@@ -147,6 +160,15 @@ export function PhotosManager() {
           </Link>
           , not from this screen.
         </p>
+        <Button
+          variant="outline"
+          className="mt-3"
+          disabled={downloadingTemplate}
+          onClick={handleDownloadMasterTemplate}
+        >
+          {downloadingTemplate ? <Loader2 className="animate-spin" /> : <Download />}
+          Download Master Excel template
+        </Button>
 
         <label
           onDragOver={(e) => {
