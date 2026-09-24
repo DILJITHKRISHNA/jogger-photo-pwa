@@ -10,6 +10,7 @@ export interface CreateImportRecordInput {
   errorCount: number;
   errors: unknown[];
   missingPhotos: string[];
+  rows?: unknown[];
 }
 
 @Injectable()
@@ -26,6 +27,7 @@ export class ImportsService {
         errorCount: input.errorCount,
         errors: input.errors as Prisma.InputJsonValue,
         missingPhotos: input.missingPhotos,
+        rows: input.rows as Prisma.InputJsonValue | undefined,
       },
     });
   }
@@ -34,6 +36,7 @@ export class ImportsService {
     return this.prisma.importRecord.findMany({
       where: type ? { type } : undefined,
       orderBy: { uploadedAt: 'desc' },
+      omit: { rows: true },
       take: 200,
     });
   }

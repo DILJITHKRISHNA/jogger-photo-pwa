@@ -35,10 +35,11 @@ export class SchemeController {
     return this.prisma.schemeEntry.findMany({ orderBy: { article: 'asc' } });
   }
 
-  /** Delete the uploaded list (executives stop seeing it immediately). */
+  /** Clear the list and its upload history (executives stop seeing it immediately). */
   @Delete()
   async clear(@CurrentUser() user: AuthenticatedUser) {
     const result = await this.prisma.schemeEntry.deleteMany({});
+    await this.prisma.importRecord.deleteMany({ where: { type: 'SCHEME' } });
     await this.audit.record({
       userId: user.id,
       action: 'scheme.clear',

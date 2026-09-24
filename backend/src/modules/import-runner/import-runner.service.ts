@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ExcelService } from '../excel/excel.service';
 import { ImportsService } from '../imports/imports.service';
@@ -100,9 +100,103 @@ export class ImportRunnerService {
       errorCount: parsed.errors.length,
       errors: parsed.errors,
       missingPhotos,
+      rows,
     });
 
-    return { record };
+    // The saved rows can be large — keep them server-side, out of the API response.
+    const { rows: _saved, ...visible } = record;
+    void _saved;
+    return { record: visible as ImportRecord };
+  }
+
+  /** Wipe the master list, un-tag every photo, and drop the brands/genders it created. Categories are kept. */
+  async clearMaster() {
+    const [master, brands, genders] = await this.prisma.$transaction([
+      this.prisma.masterEntry.deleteMany({}),
+      this.prisma.brand.deleteMany({}),
+      this.prisma.gender.deleteMany({}),
+      this.prisma.product.updateMany({
+        data: { categoryId: null, brandId: null, genderId: null },
+      }),
+    ]);
+    return { rows: master.count, brands: brands.count, genders: genders.count };
+  }
+
+  /**
+   * Delete one upload. Removes its history entry and the data it contributed:
+   *  - Stock / Master replace the whole list on upload, so deleting the live
+   *    (latest) upload rolls back to the previous upload, or clears the list.
+   *  - Scheme / New Model merge, so only rows no other upload also listed go.
+   * Uploads made before rows were tracked can't be rolled back automatically.
+   */
+  async deleteImport(id: string) {
+    const record = await this.prisma.importRecord.findUnique({ where: { id } });
+    if (!record) throw new NotFoundException('Upload not found');
+
+    type SavedRow = {
+      article: string;
+      colour: string;
+      category: string | null;
+      brand: string | null;
+      gender: string | null;
+    };
+    const rowsOf = (r: { rows: unknown }) => (Array.isArray(r.rows) ? (r.rows as SavedRow[]) : null);
+    const savedRows = rowsOf(record);
+
+    const latest = await this.prisma.importRecord.findFirst({
+      where: { type: record.type },
+      orderBy: { uploadedAt: 'desc' },
+      select: { id: true },
+    });
+    const wasLatest = latest?.id === id;
+
+    await this.prisma.importRecord.delete({ where: { id } });
+
+    if (record.type === 'PHOTOS') return { dataRemoved: false, tracked: true };
+
+    if (record.type === 'STOCK' || record.type === 'MASTER') {
+      if (!wasLatest) return { dataRemoved: false, tracked: true };
+      const previous = await this.prisma.importRecord.findFirst({
+        where: { type: record.type },
+        orderBy: { uploadedAt: 'desc' },
+      });
+      const previousRows = previous ? rowsOf(previous) : null;
+
+      if (record.type === 'STOCK') {
+        await this.prisma.stockEntry.deleteMany({});
+        if (previousRows && previousRows.length > 0) {
+          await this.prisma.stockEntry.createMany({
+            data: previousRows.map((r) => ({
+              article: r.article,
+              colour: r.colour,
+              category: r.category,
+            })),
+          });
+        }
+      } else if (previousRows && previousRows.length > 0) {
+        await this.importMaster(previousRows);
+      } else {
+        await this.clearMaster();
+      }
+      return { dataRemoved: true, tracked: true, rolledBackTo: previousRows ? previous?.filename : null };
+    }
+
+    // SCHEME / NEW_MODEL — merged lists.
+    if (!savedRows) return { dataRemoved: false, tracked: false };
+    const others = await this.prisma.importRecord.findMany({ where: { type: record.type } });
+    const keep = new Set<string>();
+    for (const other of others) {
+      for (const r of rowsOf(other) ?? []) keep.add(`${r.article}::${r.colour}`);
+    }
+    const remove = savedRows.filter((r) => !keep.has(`${r.article}::${r.colour}`));
+    const delegate = record.type === 'SCHEME' ? this.prisma.schemeEntry : this.prisma.newModelEntry;
+    for (let i = 0; i < remove.length; i += 500) {
+      const chunk = remove.slice(i, i + 500);
+      await (delegate as typeof this.prisma.schemeEntry).deleteMany({
+        where: { OR: chunk.map((r) => ({ article: r.article, colour: r.colour })) },
+      });
+    }
+    return { dataRemoved: remove.length > 0, tracked: true, removed: remove.length };
   }
 
   /** Fully replace the master list, ensure categories/brands/genders exist, re-tag photos. */

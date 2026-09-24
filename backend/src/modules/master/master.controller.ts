@@ -36,28 +36,21 @@ export class MasterController {
   }
 
   /**
-   * Delete the uploaded Master Excel: clears the master list, un-tags every
-   * photo (category / brand / gender), and removes the brands and genders that
-   * came from it. Categories are kept — they're also managed by hand. Photos
-   * themselves are not deleted.
+   * Clear everything from Master Excel uploads: the master list and its upload
+   * history, every photo's category / brand / gender, and the brands/genders it
+   * created. Categories and the photos themselves are kept.
    */
   @Delete()
   async clear(@CurrentUser() user: AuthenticatedUser) {
-    const [master, brands, genders] = await this.prisma.$transaction([
-      this.prisma.masterEntry.deleteMany({}),
-      this.prisma.brand.deleteMany({}),
-      this.prisma.gender.deleteMany({}),
-      this.prisma.product.updateMany({
-        data: { categoryId: null, brandId: null, genderId: null },
-      }),
-    ]);
+    const result = await this.runner.clearMaster();
+    const history = await this.prisma.importRecord.deleteMany({ where: { type: 'MASTER' } });
     await this.audit.record({
       userId: user.id,
       action: 'master.clear',
       entity: 'MasterEntry',
-      meta: { rows: master.count, brands: brands.count, genders: genders.count },
+      meta: { ...result, history: history.count },
     });
-    return { success: true, deleted: master.count };
+    return { success: true, deleted: result.rows };
   }
 
   @Get('template')

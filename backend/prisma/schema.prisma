@@ -175,6 +175,8 @@ model ImportRecord {
   errorCount   Int
   errors       Json     @default("[]")
   missingPhotos String[]
+  /// The valid rows this upload imported — lets a single upload be deleted later.
+  rows         Json?
 
   uploadedAt DateTime @default(now())
 
