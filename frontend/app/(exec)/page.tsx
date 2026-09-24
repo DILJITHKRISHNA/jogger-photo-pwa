@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { Images, PackageCheck, Tag, Sparkles, ChevronRight } from "lucide-react";
+import { Images, PackageCheck, Tag, Sparkles, Store, Users, ChevronRight } from "lucide-react";
 
 import { AppHeader } from "@/components/executive/app-header";
 import { HomeSearchBar } from "@/components/executive/home-search-bar";
 import { useAuth } from "@/hooks/use-auth";
 import { useCategories } from "@/features/catalogue/use-categories";
 import { useGallery, useStockGallery } from "@/features/catalogue/use-gallery";
+import { useGroups } from "@/features/catalogue/use-groups";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function HomePage() {
@@ -16,6 +17,8 @@ export default function HomePage() {
   const { items: stockItems } = useStockGallery();
   const { items: schemeItems } = useGallery("/catalogue/scheme");
   const { items: newModelItems } = useGallery("/catalogue/new-models");
+  const { groups: brands } = useGroups("brands");
+  const { groups: genders } = useGroups("genders");
 
   const tiles = [
     {
@@ -45,6 +48,20 @@ export default function HomePage() {
       subtitle: `${newModelItems.length} article${newModelItems.length === 1 ? "" : "s"}`,
       icon: Sparkles,
       accent: "bg-amber-500/10 text-amber-600 dark:text-amber-500",
+    },
+    {
+      href: "/gender",
+      label: "Gender",
+      subtitle: `${genders.length} section${genders.length === 1 ? "" : "s"}`,
+      icon: Users,
+      accent: "bg-sky-500/10 text-sky-600 dark:text-sky-400",
+    },
+    {
+      href: "/brand",
+      label: "Brand",
+      subtitle: `${brands.length} brand${brands.length === 1 ? "" : "s"}`,
+      icon: Store,
+      accent: "bg-rose-500/10 text-rose-600 dark:text-rose-400",
     },
   ];
 

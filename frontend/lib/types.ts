@@ -109,3 +109,11 @@ export interface CheckResult {
   inScheme: boolean;
   isNewModel: boolean;
 }
+
+/** A Brand or Gender box entry, with how many active photos it holds. */
+export interface GroupSummary {
+  id: string;
+  name: string;
+  slug: string;
+  count: number;
+}
