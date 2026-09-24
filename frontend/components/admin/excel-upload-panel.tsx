@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -50,20 +50,31 @@ const DELETE_INFO: Record<ExcelKind, { label: string; effect: string }> = {
   master: {
     label: "Master Excel",
     effect:
-      "The master list is cleared, every photo loses its category, brand and gender, and the Brand and Gender boxes are emptied. Photos are not deleted — upload a corrected Master Excel to categorise them again.",
+      "All Master uploads and their history are removed, every photo loses its category, brand and gender, and the Brand and Gender boxes are emptied. Photos are not deleted — upload a corrected Master Excel to categorise them again.",
   },
   stock: {
     label: "Today's Stock",
-    effect: "Today's Stock will be empty for executives until you upload a new stock Excel.",
+    effect: "All stock uploads and their history are removed. Today's Stock is empty for executives until you upload a new stock Excel.",
   },
   scheme: {
     label: "Scheme list",
-    effect: "Scheme Articles will be empty for executives until you upload a new scheme Excel.",
+    effect: "All scheme uploads and their history are removed. Scheme Articles is empty for executives until you upload a new scheme Excel.",
   },
   "new-model": {
     label: "New Model list",
-    effect: "New Model will be empty for executives until you upload a new New Model Excel.",
+    effect: "All New Model uploads and their history are removed. New Model is empty for executives until you upload a new New Model Excel.",
   },
+};
+
+const DELETE_ONE_EFFECT: Record<ExcelKind, string> = {
+  master:
+    "If this is the current Master Excel, the app goes back to the previous Master upload (or is cleared if there isn't one) and photos are re-tagged to match. Older uploads only lose their history entry.",
+  stock:
+    "If this is the current stock list, Today's Stock goes back to the previous stock upload (or is empty if there isn't one). Older uploads only lose their history entry.",
+  scheme:
+    "Articles that only this upload added are removed from Scheme Articles. Articles another upload also listed stay.",
+  "new-model":
+    "Articles that only this upload added are removed from New Model. Articles another upload also listed stay.",
 };
 
 export function ExcelUploadPanel({
@@ -85,13 +96,19 @@ export function ExcelUploadPanel({
   const [history, setHistory] = useState<ImportRecord[]>([]);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [pendingRecord, setPendingRecord] = useState<ImportRecord | null>(null);
+  const [deletingRecord, setDeletingRecord] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
+  const loadHistory = useCallback(() => {
     apiFetch<ImportRecord[]>(`/imports?type=${RECORD_TYPE[type]}`)
       .then((data) => setHistory(data.slice(0, 5)))
       .catch(() => undefined);
   }, [type]);
+
+  useEffect(() => {
+    loadHistory();
+  }, [loadHistory]);
 
   function pickFile(list: FileList | File[] | null) {
     const picked = list ? Array.from(list)[0] : null;
@@ -146,12 +163,38 @@ export function ExcelUploadPanel({
     try {
       await apiFetch(ENDPOINT[type], { method: "DELETE" });
       setLastRecord(null);
+      setHistory([]);
       setConfirmDelete(false);
-      toast.success(`${DELETE_INFO[type].label} deleted`);
+      toast.success(`${DELETE_INFO[type].label} cleared`);
     } catch (error) {
       toast.error(error instanceof ApiError ? error.message : "Couldn't delete");
     } finally {
       setDeleting(false);
+    }
+  }
+
+  async function handleDeleteRecord() {
+    if (!pendingRecord) return;
+    setDeletingRecord(true);
+    try {
+      const result = await apiFetch<{ dataRemoved: boolean; tracked: boolean }>(
+        `/imports/${pendingRecord.id}`,
+        { method: "DELETE" },
+      );
+      if (lastRecord?.id === pendingRecord.id) setLastRecord(null);
+      setPendingRecord(null);
+      loadHistory();
+      if (!result.tracked) {
+        toast.warning(
+          "Upload removed from history. It was made before uploads were tracked, so its data stays — use Clear all to reset the list.",
+        );
+      } else {
+        toast.success(result.dataRemoved ? "Upload deleted and its data removed" : "Upload deleted");
+      }
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.message : "Couldn't delete this upload");
+    } finally {
+      setDeletingRecord(false);
     }
   }
 
@@ -220,15 +263,6 @@ export function ExcelUploadPanel({
           Import
         </Button>
 
-        <div className="mt-5 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-4">
-          <p className="text-xs text-muted-foreground">
-            Uploaded the wrong file? Remove the data it added.
-          </p>
-          <Button variant="destructive" size="sm" onClick={() => setConfirmDelete(true)}>
-            <Trash2 /> Delete uploaded data
-          </Button>
-        </div>
-
         {lastRecord && (
           <div className="mt-4 flex flex-col gap-3">
             <Alert variant={lastRecord.errorCount > 0 ? "warning" : "success"}>
@@ -284,7 +318,12 @@ export function ExcelUploadPanel({
       </div>
 
       <div>
-        <h2 className="mb-2 text-sm font-bold">Recent uploads</h2>
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <h2 className="text-sm font-bold">Recent uploads</h2>
+          <Button variant="destructive" size="sm" onClick={() => setConfirmDelete(true)}>
+            <Trash2 /> Clear all
+          </Button>
+        </div>
         <div className="overflow-hidden rounded-xl border border-border bg-card">
           {history.length === 0 ? (
             <p className="p-5 text-center text-sm text-muted-foreground">No uploads yet.</p>
@@ -303,6 +342,15 @@ export function ExcelUploadPanel({
                     {record.errorCount > 0 && (
                       <Badge variant="destructive">{record.errorCount} errors</Badge>
                     )}
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="text-destructive hover:bg-destructive/10"
+                      aria-label={`Delete upload ${record.filename}`}
+                      onClick={() => setPendingRecord(record)}
+                    >
+                      <Trash2 />
+                    </Button>
                   </div>
                 </li>
               ))}
@@ -314,14 +362,33 @@ export function ExcelUploadPanel({
       <Dialog open={confirmDelete} onOpenChange={(open) => !deleting && setConfirmDelete(open)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete the uploaded {DELETE_INFO[type].label}?</DialogTitle>
+            <DialogTitle>Clear all {DELETE_INFO[type].label} uploads?</DialogTitle>
             <DialogDescription>{DELETE_INFO[type].effect}</DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
             <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
               {deleting && <Loader2 className="animate-spin" />}
-              Delete
+              Clear all
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(pendingRecord)}
+        onOpenChange={(open) => !deletingRecord && !open && setPendingRecord(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete “{pendingRecord?.filename}”?</DialogTitle>
+            <DialogDescription>{DELETE_ONE_EFFECT[type]}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
+            <Button variant="destructive" onClick={handleDeleteRecord} disabled={deletingRecord}>
+              {deletingRecord && <Loader2 className="animate-spin" />}
+              Delete upload
             </Button>
           </DialogFooter>
         </DialogContent>

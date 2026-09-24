@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Controller,
+  Delete,
   Get,
   Post,
   Res,
@@ -32,6 +33,19 @@ export class NewModelsController {
   @Get()
   findAll() {
     return this.prisma.newModelEntry.findMany({ orderBy: { article: 'asc' } });
+  }
+
+  /** Delete the uploaded list (executives stop seeing it immediately). */
+  @Delete()
+  async clear(@CurrentUser() user: AuthenticatedUser) {
+    const result = await this.prisma.newModelEntry.deleteMany({});
+    await this.audit.record({
+      userId: user.id,
+      action: 'new-model.clear',
+      entity: 'NewModelEntry',
+      meta: { rows: result.count },
+    });
+    return { success: true, deleted: result.count };
   }
 
   @Get('template')

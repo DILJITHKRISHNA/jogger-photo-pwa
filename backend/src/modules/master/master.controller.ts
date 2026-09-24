@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Controller,
+  Delete,
   Get,
   Post,
   Res,
@@ -32,6 +33,31 @@ export class MasterController {
   @Get()
   findAll() {
     return this.prisma.masterEntry.findMany({ orderBy: { article: 'asc' } });
+  }
+
+  /**
+   * Delete the uploaded Master Excel: clears the master list, un-tags every
+   * photo (category / brand / gender), and removes the brands and genders that
+   * came from it. Categories are kept — they're also managed by hand. Photos
+   * themselves are not deleted.
+   */
+  @Delete()
+  async clear(@CurrentUser() user: AuthenticatedUser) {
+    const [master, brands, genders] = await this.prisma.$transaction([
+      this.prisma.masterEntry.deleteMany({}),
+      this.prisma.brand.deleteMany({}),
+      this.prisma.gender.deleteMany({}),
+      this.prisma.product.updateMany({
+        data: { categoryId: null, brandId: null, genderId: null },
+      }),
+    ]);
+    await this.audit.record({
+      userId: user.id,
+      action: 'master.clear',
+      entity: 'MasterEntry',
+      meta: { rows: master.count, brands: brands.count, genders: genders.count },
+    });
+    return { success: true, deleted: master.count };
   }
 
   @Get('template')
