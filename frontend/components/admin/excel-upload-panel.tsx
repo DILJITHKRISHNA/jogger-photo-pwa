@@ -8,6 +8,7 @@ import {
   FileSpreadsheet,
   ImageOff,
   Loader2,
+  Trash2,
   UploadCloud,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -15,6 +16,15 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { apiFetch, ApiError, downloadAuthenticated } from "@/lib/api-client";
 import { formatRelativeTime } from "@/lib/format";
@@ -36,6 +46,26 @@ const RECORD_TYPE: Record<ExcelKind, ImportType> = {
   master: "MASTER",
 };
 
+const DELETE_INFO: Record<ExcelKind, { label: string; effect: string }> = {
+  master: {
+    label: "Master Excel",
+    effect:
+      "The master list is cleared, every photo loses its category, brand and gender, and the Brand and Gender boxes are emptied. Photos are not deleted — upload a corrected Master Excel to categorise them again.",
+  },
+  stock: {
+    label: "Today's Stock",
+    effect: "Today's Stock will be empty for executives until you upload a new stock Excel.",
+  },
+  scheme: {
+    label: "Scheme list",
+    effect: "Scheme Articles will be empty for executives until you upload a new scheme Excel.",
+  },
+  "new-model": {
+    label: "New Model list",
+    effect: "New Model will be empty for executives until you upload a new New Model Excel.",
+  },
+};
+
 export function ExcelUploadPanel({
   type,
   title,
@@ -53,6 +83,8 @@ export function ExcelUploadPanel({
   const [downloadingTemplate, setDownloadingTemplate] = useState(false);
   const [lastRecord, setLastRecord] = useState<ImportRecord | null>(null);
   const [history, setHistory] = useState<ImportRecord[]>([]);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -106,6 +138,20 @@ export function ExcelUploadPanel({
       toast.error(error instanceof ApiError ? error.message : "Import failed");
     } finally {
       setUploading(false);
+    }
+  }
+
+  async function handleDelete() {
+    setDeleting(true);
+    try {
+      await apiFetch(ENDPOINT[type], { method: "DELETE" });
+      setLastRecord(null);
+      setConfirmDelete(false);
+      toast.success(`${DELETE_INFO[type].label} deleted`);
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.message : "Couldn't delete");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -173,6 +219,15 @@ export function ExcelUploadPanel({
           {uploading ? <Loader2 className="animate-spin" /> : <UploadCloud />}
           Import
         </Button>
+
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-4">
+          <p className="text-xs text-muted-foreground">
+            Uploaded the wrong file? Remove the data it added.
+          </p>
+          <Button variant="destructive" size="sm" onClick={() => setConfirmDelete(true)}>
+            <Trash2 /> Delete uploaded data
+          </Button>
+        </div>
 
         {lastRecord && (
           <div className="mt-4 flex flex-col gap-3">
@@ -255,6 +310,22 @@ export function ExcelUploadPanel({
           )}
         </div>
       </div>
+
+      <Dialog open={confirmDelete} onOpenChange={(open) => !deleting && setConfirmDelete(open)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete the uploaded {DELETE_INFO[type].label}?</DialogTitle>
+            <DialogDescription>{DELETE_INFO[type].effect}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
+            <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
+              {deleting && <Loader2 className="animate-spin" />}
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
