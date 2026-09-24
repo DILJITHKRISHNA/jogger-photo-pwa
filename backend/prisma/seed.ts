@@ -130,6 +130,18 @@ const DEMO_PRODUCTS: Array<[string, string, string]> = [
   ['6002', 'YELLOW', 'Kids'],
 ];
 
+const BRAND_NAMES = ['JOGGER', 'BOB LIFE', 'PHOOBA', 'POPZY', 'EXPRESS'];
+const GENDER_NAMES = ['GENTS', 'LADIES', 'BOYS', 'SCHOOL', 'KIDS', 'GIRLS'];
+const GENDER_BY_CATEGORY: Record<string, string> = {
+  'PU Gents': 'GENTS',
+  'PU Ladies': 'LADIES',
+  EVA: 'KIDS',
+  Supersoft: 'GIRLS',
+  Casual: 'GENTS',
+  Sports: 'BOYS',
+  Kids: 'KIDS',
+};
+
 const STOCK_ROWS: Array<[string, string, string]> = [
   ['1001', 'BLACK', 'PU Gents'],
   ['1001', 'BROWN', 'PU Gents'],
@@ -224,10 +236,44 @@ async function main() {
   }
   console.log(`Seeded ${DEMO_PRODUCTS.length} demo products with placeholder photos.`);
 
+  // --- brands + genders (demo assignment; real data comes from the Master Excel) ---
+  const brandIdByName = new Map<string, string>();
+  for (let i = 0; i < BRAND_NAMES.length; i++) {
+    const name = BRAND_NAMES[i];
+    const b = await prisma.brand.upsert({
+      where: { slug: slugify(name) },
+      update: {},
+      create: { name, slug: slugify(name), sortOrder: i },
+    });
+    brandIdByName.set(name, b.id);
+  }
+  const genderIdByName = new Map<string, string>();
+  for (let i = 0; i < GENDER_NAMES.length; i++) {
+    const name = GENDER_NAMES[i];
+    const g = await prisma.gender.upsert({
+      where: { slug: slugify(name) },
+      update: {},
+      create: { name, slug: slugify(name), sortOrder: i },
+    });
+    genderIdByName.set(name, g.id);
+  }
+  const demoTags = DEMO_PRODUCTS.map(([article, colour, category], i) => ({
+    article,
+    colour,
+    category,
+    brand: BRAND_NAMES[i % BRAND_NAMES.length],
+    gender: GENDER_BY_CATEGORY[category] ?? 'KIDS',
+  }));
+  for (const t of demoTags) {
+    await prisma.product.update({
+      where: { article_colour: { article: t.article, colour: t.colour } },
+      data: { brandId: brandIdByName.get(t.brand), genderId: genderIdByName.get(t.gender) },
+    });
+  }
+  console.log(`Seeded ${BRAND_NAMES.length} brands and ${GENDER_NAMES.length} genders.`);
+
   await prisma.masterEntry.deleteMany({});
-  await prisma.masterEntry.createMany({
-    data: DEMO_PRODUCTS.map(([article, colour, category]) => ({ article, colour, category })),
-  });
+  await prisma.masterEntry.createMany({ data: demoTags });
 
   // --- stock (replace) ---
   await prisma.stockEntry.deleteMany({});

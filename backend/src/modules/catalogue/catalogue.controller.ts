@@ -29,6 +29,26 @@ export class CatalogueController {
     return this.catalogue.categoryGallery(slug);
   }
 
+  @Get('brands')
+  brands() {
+    return this.catalogue.brands();
+  }
+
+  @Get('brands/:slug')
+  brandGallery(@Param('slug') slug: string) {
+    return this.catalogue.brandGallery(slug);
+  }
+
+  @Get('genders')
+  genders() {
+    return this.catalogue.genders();
+  }
+
+  @Get('genders/:slug')
+  genderGallery(@Param('slug') slug: string) {
+    return this.catalogue.genderGallery(slug);
+  }
+
   @Get('stock')
   stockGallery() {
     return this.catalogue.stockGallery();

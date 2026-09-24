@@ -6,6 +6,8 @@ export interface ParsedExcelRow {
   article: string;
   colour: string;
   category: string | null;
+  brand: string | null;
+  gender: string | null;
 }
 
 export interface ImportErrorRow {
@@ -22,7 +24,9 @@ export interface ParsedExcelResult {
   fatal?: string;
 }
 
-const HEADER_ALIASES: Record<'article' | 'colour' | 'category', string[]> = {
+type Field = 'article' | 'colour' | 'category' | 'brand' | 'gender';
+
+const HEADER_ALIASES: Record<Field, string[]> = {
   article: [
     'article',
     'articleno',
@@ -36,6 +40,8 @@ const HEADER_ALIASES: Record<'article' | 'colour' | 'category', string[]> = {
   ],
   colour: ['colour', 'color'],
   category: ['category', 'cat', 'group', 'section'],
+  brand: ['brand', 'brandname'],
+  gender: ['gender', 'sex', 'segment'],
 };
 
 function normalizeHeader(value: unknown): string {
@@ -47,12 +53,12 @@ function normalizeHeader(value: unknown): string {
 
 function findHeaderRow(
   matrix: unknown[][],
-): { index: number; columns: Partial<Record<'article' | 'colour' | 'category', number>> } | null {
+): { index: number; columns: Partial<Record<Field, number>> } | null {
   const maxScan = Math.min(matrix.length, 10);
 
   for (let r = 0; r < maxScan; r++) {
     const row = matrix[r] ?? [];
-    const columns: Partial<Record<'article' | 'colour' | 'category', number>> = {};
+    const columns: Partial<Record<Field, number>> = {};
 
     row.forEach((cell, c) => {
       const normalized = normalizeHeader(cell);
@@ -147,10 +153,13 @@ export class ExcelService {
 
       const article = cellToString(raw[header.columns.article!]);
       const colour = cellToString(raw[header.columns.colour!]);
-      const category =
-        header.columns.category !== undefined
-          ? cellToString(raw[header.columns.category]) || null
+      const optional = (field: Field): string | null =>
+        header.columns[field] !== undefined
+          ? cellToString(raw[header.columns[field]!]) || null
           : null;
+      const category = optional('category');
+      const brand = optional('brand');
+      const gender = optional('gender');
 
       if (!article && !colour) {
         errors.push({ row: rowNumber, message: 'Missing Article and Colour' });
@@ -169,7 +178,7 @@ export class ExcelService {
         continue;
       }
 
-      rows.push({ row: rowNumber, article, colour, category });
+      rows.push({ row: rowNumber, article, colour, category, brand, gender });
     }
 
     return { total, rows, errors };
@@ -179,11 +188,11 @@ export class ExcelService {
     const templates = {
       master: {
         sheetName: 'MASTER EXCEL',
-        header: ['Article', 'Colour', 'Category'],
+        header: ['Article', 'Colour', 'Category', 'Brand', 'Gender'],
         sample: [
-          ['1001', 'BLACK', 'PU Gents'],
-          ['1001', 'BROWN', 'PU Gents'],
-          ['111', 'LGRY', 'EVA'],
+          ['1001', 'BLACK', 'PU Gents', 'JOGGER', 'GENTS'],
+          ['1001', 'BROWN', 'PU Gents', 'JOGGER', 'GENTS'],
+          ['111', 'LGRY', 'EVA', 'BOB LIFE', 'KIDS'],
         ],
       },
       stock: {
@@ -227,10 +236,11 @@ export class ExcelService {
       const instructions = XLSX.utils.aoa_to_sheet([
         ['How to fill the Master Excel'],
         [''],
-        ['Keep the first row as the header: Article | Colour | Category'],
+        ['Keep the first row as the header: Article | Colour | Category | Brand | Gender'],
         ['Add one row for every Article + Colour that has (or will have) a photo.'],
         ['The photo filename must match: ARTICLE COLOUR.jpg  e.g. 1001 BLACK.jpg'],
         ['Category is the group name used in Bulk Photos (e.g. PU Gents, EVA).'],
+        ['Brand (e.g. JOGGER, BOB LIFE) and Gender (e.g. GENTS, LADIES, BOYS) are optional — they fill the Brand and Gender boxes in the app.'],
         ['The sample rows on the first sheet are examples — replace them with your real data.'],
         ['Save as .xlsx and import the file on the Master Excel screen.'],
       ]);

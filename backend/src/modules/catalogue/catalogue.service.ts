@@ -12,6 +12,13 @@ export interface ZipItem {
   name: string;
 }
 
+export interface GroupSummary {
+  id: string;
+  name: string;
+  slug: string;
+  count: number;
+}
+
 export interface ProductView {
   id: string;
   article: string;
@@ -61,6 +68,42 @@ export class CatalogueService {
     if (!category) return [];
     const products = await this.prisma.product.findMany({
       where: { active: true, categoryId: category.id },
+      include: { category: true },
+      orderBy: { article: 'asc' },
+    });
+    return products.map(toView);
+  }
+
+  /** Brands with their active photo counts — backs the executive Brand box. */
+  async brands(): Promise<GroupSummary[]> {
+    const rows = await this.prisma.brand.findMany({
+      orderBy: { sortOrder: 'asc' },
+      include: { _count: { select: { products: { where: { active: true } } } } },
+    });
+    return rows.map((r) => ({ id: r.id, name: r.name, slug: r.slug, count: r._count.products }));
+  }
+
+  /** Genders with their active photo counts — backs the executive Gender box. */
+  async genders(): Promise<GroupSummary[]> {
+    const rows = await this.prisma.gender.findMany({
+      orderBy: { sortOrder: 'asc' },
+      include: { _count: { select: { products: { where: { active: true } } } } },
+    });
+    return rows.map((r) => ({ id: r.id, name: r.name, slug: r.slug, count: r._count.products }));
+  }
+
+  async brandGallery(slug: string): Promise<ProductView[]> {
+    const products = await this.prisma.product.findMany({
+      where: { active: true, brand: { slug } },
+      include: { category: true },
+      orderBy: { article: 'asc' },
+    });
+    return products.map(toView);
+  }
+
+  async genderGallery(slug: string): Promise<ProductView[]> {
+    const products = await this.prisma.product.findMany({
+      where: { active: true, gender: { slug } },
       include: { category: true },
       orderBy: { article: 'asc' },
     });

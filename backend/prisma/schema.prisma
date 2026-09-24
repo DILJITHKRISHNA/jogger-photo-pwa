@@ -62,6 +62,34 @@ model Category {
   @@map("categories")
 }
 
+/// Brand (JOGGER, BOB LIFE, …) — created from the Master Excel "Brand" column.
+model Brand {
+  id        String @id @default(cuid())
+  name      String
+  slug      String @unique
+  sortOrder Int    @default(0)
+
+  createdAt DateTime @default(now())
+
+  products Product[]
+
+  @@map("brands")
+}
+
+/// Gender / segment (GENTS, LADIES, BOYS, …) — created from the Master Excel "Gender" column.
+model Gender {
+  id        String @id @default(cuid())
+  name      String
+  slug      String @unique
+  sortOrder Int    @default(0)
+
+  createdAt DateTime @default(now())
+
+  products Product[]
+
+  @@map("genders")
+}
+
 /// Article + Colour = the unique product key throughout the system.
 model Product {
   id       String    @id @default(cuid())
@@ -69,6 +97,10 @@ model Product {
   colour   String
   categoryId String?
   category Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  brandId  String?
+  brand    Brand?    @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  genderId String?
+  gender   Gender?   @relation(fields: [genderId], references: [id], onDelete: SetNull)
 
   photoUrl      String
   photoFilename String
@@ -79,16 +111,20 @@ model Product {
 
   @@unique([article, colour])
   @@index([categoryId])
+  @@index([brandId])
+  @@index([genderId])
   @@map("products")
 }
 
-/// Master catalogue Excel — maps Article + Colour to a category. Fully
+/// Master catalogue Excel — maps Article + Colour to a category (+ optional brand/gender). Fully
 /// replaced on each upload; product photos are categorised from this list.
 model MasterEntry {
   id       String @id @default(cuid())
   article  String
   colour   String
   category String
+  brand    String?
+  gender   String?
 
   @@unique([article, colour])
   @@index([article, colour])

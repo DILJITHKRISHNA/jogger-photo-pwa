@@ -63,18 +63,26 @@ export class ProductsService {
       uncategorised: boolean;
     }[] = [];
 
-    const [masterRows, categories] = await Promise.all([
+    const [masterRows, categories, brands, genders] = await Promise.all([
       this.prisma.masterEntry.findMany(),
       this.prisma.category.findMany({ select: { id: true, slug: true } }),
+      this.prisma.brand.findMany({ select: { id: true, slug: true } }),
+      this.prisma.gender.findMany({ select: { id: true, slug: true } }),
     ]);
     const hasMaster = masterRows.length > 0;
     const categoryIdBySlug = new Map(categories.map((c) => [c.slug, c.id]));
-    const categoryIdByKey = new Map<string, string | null>();
+    const brandIdBySlug = new Map(brands.map((b) => [b.slug, b.id]));
+    const genderIdBySlug = new Map(genders.map((g) => [g.slug, g.id]));
+    const tagsByKey = new Map<
+      string,
+      { categoryId: string | null; brandId: string | null; genderId: string | null }
+    >();
     for (const row of masterRows) {
-      categoryIdByKey.set(
-        `${row.article}::${row.colour}`,
-        categoryIdBySlug.get(slugify(row.category)) ?? null,
-      );
+      tagsByKey.set(`${row.article}::${row.colour}`, {
+        categoryId: categoryIdBySlug.get(slugify(row.category)) ?? null,
+        brandId: row.brand ? (brandIdBySlug.get(slugify(row.brand)) ?? null) : null,
+        genderId: row.gender ? (genderIdBySlug.get(slugify(row.gender)) ?? null) : null,
+      });
     }
 
     for (let i = 0; i < files.length; i++) {
@@ -99,21 +107,30 @@ export class ProductsService {
           contentType: file.mimetype || CONTENT_TYPES[parsed.ext] || 'application/octet-stream',
         });
 
-        const categoryId = hasMaster
-          ? (categoryIdByKey.get(`${parsed.article}::${parsed.colour}`) ?? null)
-          : (existing?.categoryId ?? null);
+        const tags = hasMaster
+          ? (tagsByKey.get(`${parsed.article}::${parsed.colour}`) ?? {
+              categoryId: null,
+              brandId: null,
+              genderId: null,
+            })
+          : {
+              categoryId: existing?.categoryId ?? null,
+              brandId: existing?.brandId ?? null,
+              genderId: existing?.genderId ?? null,
+            };
+        const { categoryId } = tags;
 
         await this.prisma.product.upsert({
           where: { article_colour: { article: parsed.article, colour: parsed.colour } },
           create: {
             article: parsed.article,
             colour: parsed.colour,
-            categoryId,
+            ...tags,
             photoUrl: url,
             photoFilename: parsed.original,
           },
           update: {
-            categoryId,
+            ...tags,
             photoUrl: url,
             photoFilename: parsed.original,
             active: true,
