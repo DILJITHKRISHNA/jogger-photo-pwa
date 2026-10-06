@@ -5,31 +5,35 @@ import { Loader2 } from "lucide-react";
 
 import { AppHeader } from "@/components/executive/app-header";
 import { ProductGallery } from "@/components/executive/product-gallery";
-import { SizeGrid } from "@/components/executive/size-grid";
 import { useCategories } from "@/features/catalogue/use-categories";
 import {
-  sizeGroupsFromItems,
+  decodeParam,
+  itemsForSize,
+  sizeLabel,
   stockItemsForCategory,
   UNCATEGORISED_SLUG,
   useStockGallery,
 } from "@/features/catalogue/use-gallery";
 
-export default function StockCategoryGalleryPage() {
-  const { slug } = useParams<{ slug: string }>();
+export default function StockSizeGalleryPage() {
+  const params = useParams<{ slug: string; size: string }>();
+  const slug = params.slug;
+  const size = decodeParam(params.size);
   const { categories, loading: categoriesLoading } = useCategories(true);
   const { items, loading: stockLoading } = useStockGallery();
 
   const category = categories.find((c) => c.slug === slug);
-  const title =
+  const categoryName =
     slug === UNCATEGORISED_SLUG
       ? "Uncategorised"
       : (category?.name ?? (categoriesLoading ? "" : "Category"));
-  const galleryItems = stockItemsForCategory(items, slug);
+  const title = categoryName ? `${categoryName} · ${sizeLabel(size)}` : "";
+  const backHref = `/stock/${slug}`;
 
   if (categoriesLoading || stockLoading) {
     return (
       <>
-        <AppHeader title={title || "Loading…"} backHref="/stock" />
+        <AppHeader title={title || "Loading…"} backHref={backHref} />
         <div className="flex flex-1 items-center justify-center py-20">
           <Loader2 className="size-6 animate-spin text-muted-foreground" />
         </div>
@@ -37,29 +41,14 @@ export default function StockCategoryGalleryPage() {
     );
   }
 
-  const sizeGroups = sizeGroupsFromItems(galleryItems);
-  if (sizeGroups.length > 0) {
-    return (
-      <>
-        <AppHeader title={title} backHref="/stock" />
-        <SizeGrid
-          baseHref={`/stock/${slug}`}
-          groups={sizeGroups}
-          totalCount={galleryItems.length}
-          accent="emerald"
-        />
-      </>
-    );
-  }
-
   return (
     <>
-      <AppHeader title={title} backHref="/stock" />
+      <AppHeader title={title} backHref={backHref} />
       <ProductGallery
-        items={galleryItems}
-        zipName={`Todays-Stock-${title || "Category"}`}
-        emptyTitle="No stock photos in this category"
-        emptyHint="Ask your admin to upload today's stock Excel or photos for this category."
+        items={itemsForSize(stockItemsForCategory(items, slug), size)}
+        zipName={`Todays-Stock-${categoryName || "Category"}-${sizeLabel(size)}`}
+        emptyTitle="No stock photos in this size"
+        emptyHint="Ask your admin to check today's stock Excel and the Size column in the Master Excel."
       />
     </>
   );

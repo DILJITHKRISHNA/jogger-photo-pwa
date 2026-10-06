@@ -46,6 +46,64 @@ export function stockCategoriesFromItems(
   return ordered;
 }
 
+/** URL segment for "every photo in this category", whatever its size. */
+export const ALL_SIZES_SLUG = "all";
+/** URL segment for photos in this category with no Size in the Master Excel. */
+export const NO_SIZE_SLUG = "other";
+
+export interface SizeGroup {
+  slug: string;
+  label: string;
+  count: number;
+}
+
+function compareSizes(a: string, b: string): number {
+  return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+}
+
+/**
+ * The size boxes shown inside a category: one per size found in its photos
+ * (a photo with several sizes counts in each), plus "Other" for photos with
+ * no size. Empty when no photo in the category has a size — callers then
+ * show the photos straight away.
+ */
+export function sizeGroupsFromItems(items: ProductView[]): SizeGroup[] {
+  const counts = new Map<string, number>();
+  let noSize = 0;
+  for (const item of items) {
+    if (item.sizes.length === 0) noSize += 1;
+    for (const size of item.sizes) counts.set(size, (counts.get(size) ?? 0) + 1);
+  }
+  if (counts.size === 0) return [];
+
+  const groups: SizeGroup[] = [...counts.entries()]
+    .sort(([a], [b]) => compareSizes(a, b))
+    .map(([size, count]) => ({ slug: size, label: size, count }));
+  if (noSize > 0) groups.push({ slug: NO_SIZE_SLUG, label: "Other", count: noSize });
+  return groups;
+}
+
+export function itemsForSize(items: ProductView[], sizeSlug: string): ProductView[] {
+  if (sizeSlug === ALL_SIZES_SLUG) return items;
+  if (sizeSlug === NO_SIZE_SLUG) return items.filter((item) => item.sizes.length === 0);
+  return items.filter((item) => item.sizes.includes(sizeSlug));
+}
+
+export function sizeLabel(sizeSlug: string): string {
+  if (sizeSlug === ALL_SIZES_SLUG) return "All sizes";
+  if (sizeSlug === NO_SIZE_SLUG) return "Other";
+  return sizeSlug;
+}
+
+/** Route params arrive URL-encoded for anything beyond plain letters/digits. */
+export function decodeParam(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 /** Generic loader for any catalogue endpoint that returns ProductView[]. */
 export function useGallery(path: string | null) {
   const [items, setItems] = useState<ProductView[]>([]);

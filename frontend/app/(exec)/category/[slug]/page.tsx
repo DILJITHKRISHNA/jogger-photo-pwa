@@ -5,8 +5,9 @@ import { Loader2 } from "lucide-react";
 
 import { AppHeader } from "@/components/executive/app-header";
 import { ProductGallery } from "@/components/executive/product-gallery";
+import { SizeGrid } from "@/components/executive/size-grid";
 import { useCategories } from "@/features/catalogue/use-categories";
-import { useGallery } from "@/features/catalogue/use-gallery";
+import { sizeGroupsFromItems, useGallery } from "@/features/catalogue/use-gallery";
 
 export default function CategoryGalleryPage() {
   const { slug } = useParams<{ slug: string }>();
@@ -23,6 +24,17 @@ export default function CategoryGalleryPage() {
         <div className="flex flex-1 items-center justify-center py-20">
           <Loader2 className="size-6 animate-spin text-muted-foreground" />
         </div>
+      </>
+    );
+  }
+
+  // Categories with sizes in the Master Excel get a size level first.
+  const sizeGroups = sizeGroupsFromItems(items);
+  if (sizeGroups.length > 0) {
+    return (
+      <>
+        <AppHeader title={title} backHref="/category" />
+        <SizeGrid baseHref={`/category/${slug}`} groups={sizeGroups} totalCount={items.length} />
       </>
     );
   }

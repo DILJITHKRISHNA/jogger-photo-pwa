@@ -39,6 +39,8 @@ export interface ProductView {
   category: string | null;
   categorySlug: string | null;
   photoUrl: string;
+  /** Size ranges from the Master Excel (e.g. ["6x10", "7x10"]); empty if none. */
+  sizes: string[];
 }
 
 export interface StockEntry {
