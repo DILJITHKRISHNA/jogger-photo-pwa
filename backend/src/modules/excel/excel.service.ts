@@ -8,6 +8,7 @@ export interface ParsedExcelRow {
   category: string | null;
   brand: string | null;
   gender: string | null;
+  size: string | null;
 }
 
 export interface ImportErrorRow {
@@ -24,7 +25,7 @@ export interface ParsedExcelResult {
   fatal?: string;
 }
 
-type Field = 'article' | 'colour' | 'category' | 'brand' | 'gender';
+type Field = 'article' | 'colour' | 'category' | 'brand' | 'gender' | 'size';
 
 const HEADER_ALIASES: Record<Field, string[]> = {
   article: [
@@ -42,6 +43,7 @@ const HEADER_ALIASES: Record<Field, string[]> = {
   category: ['category', 'cat', 'group', 'section'],
   brand: ['brand', 'brandname'],
   gender: ['gender', 'sex', 'segment'],
+  size: ['size', 'sizes', 'sizerange', 'sizeranges', 'range'],
 };
 
 function normalizeHeader(value: unknown): string {
@@ -160,6 +162,7 @@ export class ExcelService {
       const category = optional('category');
       const brand = optional('brand');
       const gender = optional('gender');
+      const size = optional('size');
 
       if (!article && !colour) {
         errors.push({ row: rowNumber, message: 'Missing Article and Colour' });
@@ -178,7 +181,7 @@ export class ExcelService {
         continue;
       }
 
-      rows.push({ row: rowNumber, article, colour, category, brand, gender });
+      rows.push({ row: rowNumber, article, colour, category, brand, gender, size });
     }
 
     return { total, rows, errors };
@@ -188,11 +191,11 @@ export class ExcelService {
     const templates = {
       master: {
         sheetName: 'MASTER EXCEL',
-        header: ['Article', 'Colour', 'Category', 'Brand', 'Gender'],
+        header: ['Article', 'Colour', 'Category', 'Brand', 'Gender', 'Size'],
         sample: [
-          ['1001', 'BLACK', 'PU Gents', 'JOGGER', 'GENTS'],
-          ['1001', 'BROWN', 'PU Gents', 'JOGGER', 'GENTS'],
-          ['111', 'LGRY', 'EVA', 'BOB LIFE', 'KIDS'],
+          ['1001', 'BLACK', 'PU Gents', 'JOGGER', 'GENTS', '6x10'],
+          ['1001', 'BROWN', 'PU Gents', 'JOGGER', 'GENTS', '6x10, 7x10'],
+          ['111', 'LGRY', 'EVA', 'BOB LIFE', 'KIDS', '1x5'],
         ],
       },
       stock: {
@@ -236,11 +239,12 @@ export class ExcelService {
       const instructions = XLSX.utils.aoa_to_sheet([
         ['How to fill the Master Excel'],
         [''],
-        ['Keep the first row as the header: Article | Colour | Category | Brand | Gender'],
+        ['Keep the first row as the header: Article | Colour | Category | Brand | Gender | Size'],
         ['Add one row for every Article + Colour that has (or will have) a photo.'],
         ['The photo filename must match: ARTICLE COLOUR.jpg  e.g. 1001 BLACK.jpg'],
         ['Category is the group name used in Bulk Photos (e.g. PU Gents, EVA).'],
         ['Brand (e.g. JOGGER, BOB LIFE) and Gender (e.g. GENTS, LADIES, BOYS) are optional — they fill the Brand and Gender boxes in the app.'],
+        ['Size (e.g. 6x10, 7x10) is optional — inside each category the app shows one box per size. List several sizes in one cell separated by commas (6x10, 7x10), or repeat the Article + Colour on another row with the other size.'],
         ['The sample rows on the first sheet are examples — replace them with your real data.'],
         ['Save as .xlsx and import the file on the Master Excel screen.'],
       ]);

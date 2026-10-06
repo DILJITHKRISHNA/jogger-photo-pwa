@@ -4,6 +4,7 @@ import { ExcelService } from '../excel/excel.service';
 import { ImportsService } from '../imports/imports.service';
 import { normalizeArticle, normalizeColour, labelFor } from '../../common/util/product-key';
 import { slugify } from '../categories/categories.service';
+import { parseSizes, uniqueSizes } from '../../common/util/sizes';
 import type { ImportRecord } from '../../generated/prisma/client';
 
 export type ImportKind = 'stock' | 'scheme' | 'new-model' | 'master';
@@ -11,6 +12,16 @@ export type ImportKind = 'stock' | 'scheme' | 'new-model' | 'master';
 export interface ImportOutcome {
   fatal?: string;
   record?: ImportRecord;
+}
+
+/** One imported Excel row, as saved on the ImportRecord (`size` is absent on older uploads). */
+interface ImportRow {
+  article: string;
+  colour: string;
+  category: string | null;
+  brand: string | null;
+  gender: string | null;
+  size?: string | null;
 }
 
 const TYPE_MAP = {
@@ -46,6 +57,7 @@ export class ImportRunnerService {
       category: r.category,
       brand: r.brand,
       gender: r.gender,
+      size: r.size,
     }));
 
     const products = await this.prisma.product.findMany({
@@ -133,14 +145,7 @@ export class ImportRunnerService {
     const record = await this.prisma.importRecord.findUnique({ where: { id } });
     if (!record) throw new NotFoundException('Upload not found');
 
-    type SavedRow = {
-      article: string;
-      colour: string;
-      category: string | null;
-      brand: string | null;
-      gender: string | null;
-    };
-    const rowsOf = (r: { rows: unknown }) => (Array.isArray(r.rows) ? (r.rows as SavedRow[]) : null);
+    const rowsOf = (r: { rows: unknown }) => (Array.isArray(r.rows) ? (r.rows as ImportRow[]) : null);
     const savedRows = rowsOf(record);
 
     const latest = await this.prisma.importRecord.findFirst({
@@ -200,15 +205,7 @@ export class ImportRunnerService {
   }
 
   /** Fully replace the master list, ensure categories/brands/genders exist, re-tag photos. */
-  private async importMaster(
-    rows: Array<{
-      article: string;
-      colour: string;
-      category: string | null;
-      brand: string | null;
-      gender: string | null;
-    }>,
-  ) {
+  private async importMaster(rows: ImportRow[]) {
     await this.ensureNames(
       'category',
       rows.map((r) => r.category),
@@ -222,17 +219,40 @@ export class ImportRunnerService {
       rows.map((r) => r.gender),
     );
 
+    // The same Article + Colour may be listed on several rows, one per size
+    // — merge them into one entry (the first row's category/brand/gender wins).
+    const entries = new Map<
+      string,
+      {
+        article: string;
+        colour: string;
+        category: string;
+        brand: string | null;
+        gender: string | null;
+        sizes: string[];
+      }
+    >();
+    for (const r of rows) {
+      const key = `${r.article}::${r.colour}`;
+      const sizes = parseSizes(r.size);
+      const existing = entries.get(key);
+      if (existing) {
+        existing.sizes = uniqueSizes([...existing.sizes, ...sizes]);
+        continue;
+      }
+      entries.set(key, {
+        article: r.article,
+        colour: r.colour,
+        category: (r.category ?? '').trim(),
+        brand: r.brand?.trim() || null,
+        gender: r.gender?.trim() || null,
+        sizes,
+      });
+    }
+
     await this.prisma.$transaction([
       this.prisma.masterEntry.deleteMany({}),
-      this.prisma.masterEntry.createMany({
-        data: rows.map((r) => ({
-          article: r.article,
-          colour: r.colour,
-          category: (r.category ?? '').trim(),
-          brand: r.brand?.trim() || null,
-          gender: r.gender?.trim() || null,
-        })),
-      }),
+      this.prisma.masterEntry.createMany({ data: [...entries.values()] }),
     ]);
 
     await this.applyMasterTags();

@@ -5,7 +5,9 @@ import * as Joi from 'joi';
  * fast with a clear message instead of misbehaving at runtime.
  */
 export const envValidationSchema = Joi.object({
-  NODE_ENV: Joi.string().valid('development', 'test', 'production').default('development'),
+  NODE_ENV: Joi.string()
+    .valid('development', 'test', 'production')
+    .default('development'),
   PORT: Joi.number().default(4010),
   API_PREFIX: Joi.string().default('api/v1'),
   CORS_ORIGIN: Joi.string().default('http://localhost:3010'),
@@ -21,6 +23,23 @@ export const envValidationSchema = Joi.object({
   THROTTLE_LIMIT: Joi.number().default(100),
   AUTH_THROTTLE_TTL_MS: Joi.number().default(60000),
   AUTH_THROTTLE_LIMIT: Joi.number().default(10),
+
+  // Supabase Storage for product photos. Required in production: hosted
+  // containers have an ephemeral disk, so local-disk photos would vanish on
+  // every restart. Optional in development (falls back to local disk).
+  SUPABASE_URL: Joi.string()
+    .uri()
+    .when('NODE_ENV', {
+      is: 'production',
+      then: Joi.required(),
+      otherwise: Joi.optional().allow(''),
+    }),
+  SUPABASE_SERVICE_ROLE_KEY: Joi.string().when('NODE_ENV', {
+    is: 'production',
+    then: Joi.required(),
+    otherwise: Joi.optional().allow(''),
+  }),
+  SUPABASE_STORAGE_BUCKET: Joi.string().default('product-photos'),
 
   SEED_ADMIN_PHONE: Joi.string().optional(),
   SEED_ADMIN_PASSWORD: Joi.string().optional(),

@@ -116,12 +116,20 @@ against the photo catalogue and reports `missingPhotos`
 
 ## Storage
 
-`modules/storage` writes to `uploads/products/`, served at
-`/uploads/products/*` — outside the `/api/v1` prefix and outside the auth
-guards, since plain `<img>` tags can't carry a Bearer token. It's local
-disk only (no S3) — on a host with an ephemeral filesystem (most PaaS
-free/starter tiers), attach a persistent disk mounted at `/app/uploads` so
-uploaded photos survive redeploys. See [Deploying](#deploying).
+`modules/storage` stores photos in a public **Supabase Storage** bucket
+(`SUPABASE_STORAGE_BUCKET`, default `product-photos`, created on first boot
+if missing) whenever `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` are set,
+and saves the full public URL on the product. A `?v=<timestamp>` suffix is
+added on every upload so re-uploading the same Article + Colour isn't
+hidden by browser/CDN caches.
+
+Without those vars (local development) it falls back to local disk:
+`uploads/products/`, served at `/uploads/products/*` — outside the
+`/api/v1` prefix and the auth guards, since plain `<img>` tags can't carry a
+Bearer token. Supabase is **required when `NODE_ENV=production`**: hosted
+containers like Render's have an ephemeral filesystem, so local-disk photos
+disappear on every restart/spin-down while the database still points at
+them (the image then renders as just its alt text).
 
 ## Scripts
 
@@ -191,9 +199,10 @@ Render (or any Docker-based host) + a managed Postgres:
 4. **Migrate + seed** once, from your machine, against the database's
    *external* connection string (same commands as the Docker section
    above, just with that URL instead of `localhost:5434`).
-5. **Photo persistence** — attach a Render persistent disk mounted at
-   `/app/uploads` so admin-uploaded photos survive redeploys. Skippable if
-   you're just trying the app out and don't mind photos resetting.
+5. **Photo storage** — set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`
+   (Supabase → Project Settings → API; use the service-role/secret key,
+   never expose it to the frontend). The API refuses to boot in production
+   without them, since Render's disk is wiped on every restart.
 6. On the **frontend** (Vercel): set `NEXT_PUBLIC_API_URL` to
    `https://<your-render-service>.onrender.com/api/v1` and redeploy (it's
    baked in at build time).

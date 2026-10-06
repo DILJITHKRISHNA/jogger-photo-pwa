@@ -26,9 +26,13 @@ export interface ProductView {
   category: string | null;
   categorySlug: string | null;
   photoUrl: string;
+  /** Size ranges from the Master Excel (e.g. ["6x10", "7x10"]); empty if none. */
+  sizes: string[];
 }
 
-function toView(product: Product & { category: Category | null }): ProductView {
+type ProductWithCategory = Product & { category: Category | null };
+
+function toView(product: ProductWithCategory, sizes: Map<string, string[]>): ProductView {
   return {
     id: product.id,
     article: product.article,
@@ -36,6 +40,7 @@ function toView(product: Product & { category: Category | null }): ProductView {
     category: product.category?.name ?? null,
     categorySlug: product.category?.slug ?? null,
     photoUrl: product.photoUrl,
+    sizes: sizes.get(`${product.article}::${product.colour}`) ?? [],
   };
 }
 
@@ -43,13 +48,28 @@ function toView(product: Product & { category: Category | null }): ProductView {
 export class CatalogueService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /** Sizes live on the Master Excel rows, keyed by Article + Colour. */
+  private async sizesByKey(): Promise<Map<string, string[]>> {
+    const rows = await this.prisma.masterEntry.findMany({
+      where: { sizes: { isEmpty: false } },
+      select: { article: true, colour: true, sizes: true },
+    });
+    return new Map(rows.map((r) => [`${r.article}::${r.colour}`, r.sizes]));
+  }
+
+  private async toViews(products: ProductWithCategory[]): Promise<ProductView[]> {
+    if (products.length === 0) return [];
+    const sizes = await this.sizesByKey();
+    return products.map((p) => toView(p, sizes));
+  }
+
   /** Exact Article + Colour lookup — backs the full-screen photo viewer. */
   async getByKey(article: string, colour: string): Promise<ProductView | null> {
     const product = await this.prisma.product.findFirst({
       where: { active: true, article: normalizeArticle(article), colour: normalizeColour(colour) },
       include: { category: true },
     });
-    return product ? toView(product) : null;
+    return product ? (await this.toViews([product]))[0] : null;
   }
 
   async searchByArticle(article: string): Promise<ProductView[]> {
@@ -60,7 +80,7 @@ export class CatalogueService {
       include: { category: true },
       orderBy: { colour: 'asc' },
     });
-    return products.map(toView);
+    return this.toViews(products);
   }
 
   async categoryGallery(slug: string): Promise<ProductView[]> {
@@ -71,7 +91,7 @@ export class CatalogueService {
       include: { category: true },
       orderBy: { article: 'asc' },
     });
-    return products.map(toView);
+    return this.toViews(products);
   }
 
   /** Brands with their active photo counts — backs the executive Brand box. */
@@ -98,7 +118,7 @@ export class CatalogueService {
       include: { category: true },
       orderBy: { article: 'asc' },
     });
-    return products.map(toView);
+    return this.toViews(products);
   }
 
   async genderGallery(slug: string): Promise<ProductView[]> {
@@ -107,7 +127,7 @@ export class CatalogueService {
       include: { category: true },
       orderBy: { article: 'asc' },
     });
-    return products.map(toView);
+    return this.toViews(products);
   }
 
   async stockGallery(): Promise<{ items: ProductView[]; stockDate: string | null }> {
@@ -120,11 +140,12 @@ export class CatalogueService {
     });
     const byKey = new Map(products.map((p) => [`${p.article}::${p.colour}`, p]));
 
-    const items: ProductView[] = [];
+    const matched: ProductWithCategory[] = [];
     for (const entry of stock) {
       const product = byKey.get(`${entry.article}::${entry.colour}`);
-      if (product) items.push(toView(product));
+      if (product) matched.push(product);
     }
+    const items = await this.toViews(matched);
 
     return {
       items: items.sort((a, b) => a.article.localeCompare(b.article)),
@@ -140,11 +161,12 @@ export class CatalogueService {
     });
     const byKey = new Map(products.map((p) => [`${p.article}::${p.colour}`, p]));
 
-    const items: ProductView[] = [];
+    const matched: ProductWithCategory[] = [];
     for (const entry of scheme) {
       const product = byKey.get(`${entry.article}::${entry.colour}`);
-      if (product) items.push(toView(product));
+      if (product) matched.push(product);
     }
+    const items = await this.toViews(matched);
     return items.sort((a, b) => a.article.localeCompare(b.article));
   }
 
@@ -156,11 +178,12 @@ export class CatalogueService {
     });
     const byKey = new Map(products.map((p) => [`${p.article}::${p.colour}`, p]));
 
-    const items: ProductView[] = [];
+    const matched: ProductWithCategory[] = [];
     for (const entry of newModels) {
       const product = byKey.get(`${entry.article}::${entry.colour}`);
-      if (product) items.push(toView(product));
+      if (product) matched.push(product);
     }
+    const items = await this.toViews(matched);
     return items.sort((a, b) => a.article.localeCompare(b.article));
   }
 
