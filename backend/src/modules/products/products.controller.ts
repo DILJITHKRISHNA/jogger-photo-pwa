@@ -45,7 +45,7 @@ export class ProductsController {
   }
 
   @Post('photos')
-  @UseInterceptors(FilesInterceptor('files', 200, { limits: { fileSize: 15 * 1024 * 1024 } }))
+  @UseInterceptors(FilesInterceptor('files', 100, { limits: { fileSize: 25 * 1024 * 1024 } }))
   async uploadPhotos(
     @UploadedFiles() files: Array<Express.Multer.File>,
     @CurrentUser() user: AuthenticatedUser,
