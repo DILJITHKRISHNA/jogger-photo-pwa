@@ -3,7 +3,7 @@ export type Role = "ADMIN" | "EXECUTIVE";
 export interface AppUser {
   id: string;
   name: string;
-  phone: string;
+  email: string | null;
   role: Role;
   initials: string;
 }
@@ -39,7 +39,7 @@ export interface ProductView {
   category: string | null;
   categorySlug: string | null;
   photoUrl: string;
-  /** Size ranges from the Master Excel (e.g. ["6x10", "7x10"]); empty if none. */
+  /** Size ranges from the Stock Excel (e.g. ["6x10", "7x10"]) — Today's Stock only; empty elsewhere. */
   sizes: string[];
 }
 

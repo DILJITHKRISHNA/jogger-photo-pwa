@@ -10,7 +10,7 @@ export type AuthStatus = "loading" | "authenticated" | "unauthenticated";
 export interface AuthContextValue {
   user: AppUser | null;
   status: AuthStatus;
-  login: (phone: string, password: string) => Promise<AppUser>;
+  login: (email: string, password: string) => Promise<AppUser>;
   logout: () => Promise<void>;
 }
 
@@ -24,7 +24,7 @@ function getInitials(name: string): string {
 }
 
 function toAppUser(user: BackendUser): AppUser {
-  return { id: user.id, name: user.name, phone: user.phone, role: user.role, initials: getInitials(user.name) };
+  return { id: user.id, name: user.name, email: user.email, role: user.role, initials: getInitials(user.name) };
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -59,8 +59,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const login = useCallback(async (phone: string, password: string) => {
-    const result = await api.login(phone, password);
+  const login = useCallback(async (email: string, password: string) => {
+    const result = await api.login(email, password);
     const appUser = toAppUser(result.user);
     setUser(appUser);
     setStatus("authenticated");

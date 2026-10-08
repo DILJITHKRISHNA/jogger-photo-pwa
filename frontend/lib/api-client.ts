@@ -17,7 +17,7 @@ export function resolveMediaUrl(url: string): string {
 export interface BackendUser {
   id: string;
   name: string;
-  phone: string;
+  email: string | null;
   role: Role;
 }
 
@@ -73,7 +73,7 @@ async function doRefresh(): Promise<LoginResult | null> {
   return data;
 }
 
-/** Silent refresh using the httpOnly cookie — no phone/password needed. */
+/** Silent refresh using the httpOnly cookie — no email/password needed. */
 export function refreshSession(): Promise<LoginResult | null> {
   if (!refreshInFlight) {
     refreshInFlight = doRefresh().finally(() => {
@@ -83,12 +83,12 @@ export function refreshSession(): Promise<LoginResult | null> {
   return refreshInFlight;
 }
 
-export async function login(phone: string, password: string): Promise<LoginResult> {
+export async function login(email: string, password: string): Promise<LoginResult> {
   const res = await fetch(`${API_BASE_URL}/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
-    body: JSON.stringify({ phone, password }),
+    body: JSON.stringify({ email, password }),
   });
   if (!res.ok) {
     throw new ApiError(res.status, await parseErrorMessage(res));

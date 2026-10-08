@@ -31,7 +31,7 @@ export default function LoginPage() {
         </div>
 
         <p className="mt-6 text-center text-xs text-muted-foreground">
-          Trouble signing in? Ask your admin for your phone number and password.
+          Trouble signing in? Ask your admin for your email and password.
         </p>
       </div>
     </div>

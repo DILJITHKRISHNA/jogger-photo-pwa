@@ -48,7 +48,7 @@ export default function StockSizeGalleryPage() {
         items={itemsForSize(stockItemsForCategory(items, slug), size)}
         zipName={`Todays-Stock-${categoryName || "Category"}-${sizeLabel(size)}`}
         emptyTitle="No stock photos in this size"
-        emptyHint="Ask your admin to check today's stock Excel and the Size column in the Master Excel."
+        emptyHint="Ask your admin to check the Size column in today's stock Excel."
       />
     </>
   );

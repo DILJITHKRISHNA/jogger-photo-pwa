@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { KeyRound, Loader2, Phone } from "lucide-react";
+import { KeyRound, Loader2, Mail } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,7 @@ import { ApiError } from "@/lib/api-client";
 export function AdminLoginForm() {
   const router = useRouter();
   const { login, logout } = useAuth();
-  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -22,7 +22,7 @@ export function AdminLoginForm() {
     event.preventDefault();
     setLoading(true);
     try {
-      const user = await login(phone, password);
+      const user = await login(email, password);
       if (user.role !== "ADMIN") {
         await logout();
         throw new Error("This account isn't an admin — sign in from the app login instead.");
@@ -41,17 +41,17 @@ export function AdminLoginForm() {
   return (
     <form onSubmit={handleSubmit} className="flex w-full flex-col gap-4">
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="phone">Phone number</Label>
+        <Label htmlFor="email">Email</Label>
         <div className="relative">
-          <Phone className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Mail className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            id="phone"
-            type="tel"
+            id="email"
+            type="email"
             autoComplete="username"
-            placeholder="e.g. 9999999999"
+            placeholder="e.g. admin@jogger.co.in"
             className="pl-8"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
             required
           />
         </div>

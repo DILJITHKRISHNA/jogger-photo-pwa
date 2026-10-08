@@ -48,7 +48,7 @@ export function stockCategoriesFromItems(
 
 /** URL segment for "every photo in this category", whatever its size. */
 export const ALL_SIZES_SLUG = "all";
-/** URL segment for photos in this category with no Size in the Master Excel. */
+/** URL segment for photos in this category with no Size in the Stock Excel. */
 export const NO_SIZE_SLUG = "other";
 
 export interface SizeGroup {

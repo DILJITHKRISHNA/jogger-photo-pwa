@@ -49,7 +49,7 @@ export function ExecutiveMenu() {
             <div className="flex min-w-0 flex-col">
               <span className="truncate text-sm font-semibold">{user.name}</span>
               <span className="truncate text-xs font-normal text-muted-foreground">
-                {user.phone}
+                {user.email}
               </span>
             </div>
           </DropdownMenuLabel>
