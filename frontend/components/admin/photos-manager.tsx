@@ -34,6 +34,33 @@ interface UploadSummary {
   errors: { row: number; message: string }[];
 }
 
+const BATCH_SIZE = 25;
+const MAX_UPLOAD_MB = 25; // keep in sync with the API per-file limit (products.controller.ts)
+const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024;
+const MAX_EDGE_PX = 2000;
+
+/** Downscales large photos to ~2000px JPEG/WebP-safe output; returns the original if it is already small or can't be decoded. */
+async function compressImage(file: File): Promise<File> {
+  if (file.size <= 1.5 * 1024 * 1024) return file;
+  try {
+    const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+    const scale = Math.min(1, MAX_EDGE_PX / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    canvas.getContext("2d")!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close();
+
+    const isPng = file.type === "image/png";
+    const type = isPng ? "image/png" : "image/jpeg";
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type, 0.85));
+    if (!blob || blob.size >= file.size) return file;
+    return new File([blob], file.name, { type, lastModified: file.lastModified });
+  } catch {
+    return file;
+  }
+}
+
 export function PhotosManager() {
   const { categories, loading: categoriesLoading } = useCategories(true);
   const { products, setProducts, loading: productsLoading, refresh } = useAdminProducts();
@@ -41,6 +68,7 @@ export function PhotosManager() {
   const [files, setFiles] = useState<File[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [downloadingTemplate, setDownloadingTemplate] = useState(false);
   const [lastSummary, setLastSummary] = useState<UploadSummary | null>(null);
   const [filterCategoryId, setFilterCategoryId] = useState<string>("all");
@@ -81,10 +109,9 @@ export function PhotosManager() {
       return;
     }
 
-    const BATCH_SIZE = 50;
     const totalFiles = files.length;
-
     setUploading(true);
+    setProgress({ done: 0, total: totalFiles });
 
     const summary: UploadSummary = {
       total: totalFiles,
@@ -95,47 +122,60 @@ export function PhotosManager() {
       uncategorisedCount: 0,
       errors: [],
     };
+    const failed: File[] = [];
 
     try {
-      for (let start = 0; start < totalFiles; start += BATCH_SIZE) {
-        const batch = files.slice(start, start + BATCH_SIZE);
+      // Shrink every photo first (phone photos are often >15 MB, which the
+      // API rejects). Filenames are preserved — they carry Article + Colour.
+      const prepared: File[] = [];
+      for (const file of files) {
+        const resized = await compressImage(file);
+        if (resized.size > MAX_UPLOAD_BYTES) {
+          summary.errorCount += 1;
+          summary.errors.push({
+            row: prepared.length + failed.length + 1,
+            message: `${file.name}: still larger than ${MAX_UPLOAD_MB} MB after resizing`,
+          });
+          failed.push(file);
+        } else {
+          prepared.push(resized);
+        }
+      }
 
+      for (let start = 0; start < prepared.length; start += BATCH_SIZE) {
+        const batch = prepared.slice(start, start + BATCH_SIZE);
         const formData = new FormData();
+        batch.forEach((file) => formData.append("files", file));
 
-        batch.forEach((file) => {
-          formData.append("files", file);
-        });
+        // One failing batch must not abort the rest — record it and carry on.
+        try {
+          const data = await apiFetch<UploadSummary>("/products/photos", {
+            method: "POST",
+            body: formData,
+          });
+          summary.success += data.success;
+          summary.newCount += data.newCount;
+          summary.replacedCount += data.replacedCount;
+          summary.errorCount += data.errorCount;
+          summary.uncategorisedCount =
+            (summary.uncategorisedCount ?? 0) + (data.uncategorisedCount ?? 0);
+          summary.errors.push(...data.errors);
+        } catch (error) {
+          const reason = error instanceof ApiError ? error.message : "Upload failed";
+          summary.errorCount += batch.length;
+          batch.forEach((file, i) =>
+            summary.errors.push({ row: start + i + 1, message: `${file.name}: ${reason}` }),
+          );
+          failed.push(...files.filter((f) => batch.some((b) => b.name === f.name)));
+        }
 
-        const data = await apiFetch<UploadSummary>("/products/photos", {
-          method: "POST",
-          body: formData,
-        });
-
-        summary.success += data.success;
-        summary.newCount += data.newCount;
-        summary.replacedCount += data.replacedCount;
-        summary.errorCount += data.errorCount;
-        summary.uncategorisedCount =
-          (summary.uncategorisedCount ?? 0) +
-          (data.uncategorisedCount ?? 0);
-
-        summary.errors.push(...data.errors);
-
-        const uploadedSoFar = Math.min(start + batch.length, totalFiles);
-
-        toast.success(
-          `Uploaded ${uploadedSoFar} of ${totalFiles} photos`,
-        );
+        setProgress({ done: Math.min(start + batch.length, prepared.length), total: totalFiles });
       }
 
       setLastSummary(summary);
-
-      setFiles([]);
-
-      if (inputRef.current) {
-        inputRef.current.value = "";
-      }
-
+      // Keep only the files that did not upload so a retry doesn't re-send everything.
+      setFiles(failed);
+      if (inputRef.current) inputRef.current.value = "";
       await refresh();
 
       if (summary.errorCount === 0) {
@@ -143,20 +183,14 @@ export function PhotosManager() {
           `Uploaded ${summary.success} photo${summary.success === 1 ? "" : "s"} successfully`,
         );
       } else {
-        toast.warning(
-          `Uploaded ${summary.success}, ${summary.errorCount} skipped — see details below`,
-        );
+        toast.warning(`Uploaded ${summary.success}, ${summary.errorCount} skipped — see details below`);
       }
     } catch (error) {
       setLastSummary(summary);
-
-      toast.error(
-        error instanceof ApiError
-          ? error.message
-          : "Upload failed",
-      );
+      toast.error(error instanceof ApiError ? error.message : "Upload failed");
     } finally {
       setUploading(false);
+      setProgress(null);
     }
   }
 
@@ -263,7 +297,7 @@ export function PhotosManager() {
         <Button className="mt-4 w-full sm:w-auto" disabled={uploading} onClick={handleUpload}>
           {uploading ? <Loader2 className="animate-spin" /> : <UploadCloud />}
           {uploading
-            ? "Uploading photos..."
+            ? `Uploading ${progress?.done ?? 0} / ${progress?.total ?? files.length}…`
             : `Upload ${files.length > 0 ? `${files.length} photo${files.length === 1 ? "" : "s"}` : ""}`}
         </Button>
 
