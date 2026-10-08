@@ -41,8 +41,10 @@ export const envValidationSchema = Joi.object({
   }),
   SUPABASE_STORAGE_BUCKET: Joi.string().default('product-photos'),
 
+  SEED_ADMIN_EMAIL: Joi.string().email().optional(),
   SEED_ADMIN_PHONE: Joi.string().optional(),
   SEED_ADMIN_PASSWORD: Joi.string().optional(),
+  SEED_EXEC_EMAIL: Joi.string().email().optional(),
   SEED_EXEC_PHONE: Joi.string().optional(),
   SEED_EXEC_PASSWORD: Joi.string().optional(),
 });

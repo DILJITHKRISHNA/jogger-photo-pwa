@@ -16,12 +16,12 @@ export interface AuthTokens {
 export interface SafeUser {
   id: string;
   name: string;
-  phone: string;
+  email: string | null;
   role: User['role'];
 }
 
 function toSafeUser(user: User): SafeUser {
-  return { id: user.id, name: user.name, phone: user.phone, role: user.role };
+  return { id: user.id, name: user.name, email: user.email, role: user.role };
 }
 
 @Injectable()
@@ -33,17 +33,17 @@ export class AuthService {
     private readonly audit: AuditService,
   ) {}
 
-  /** POST /auth/login — phone + password → access + refresh token. */
-  async login(phone: string, password: string): Promise<{ user: SafeUser; tokens: AuthTokens }> {
-    const user = await this.users.findByPhone(phone);
+  /** POST /auth/login — email + password → access + refresh token. */
+  async login(email: string, password: string): Promise<{ user: SafeUser; tokens: AuthTokens }> {
+    const user = await this.users.findByEmail(email);
 
-    // Same error whether the phone doesn't exist or the password is wrong —
+    // Same error whether the email doesn't exist or the password is wrong —
     // never let the response reveal which one it was.
     const passwordOk = user ? await this.users.verifyPassword(password, user.passwordHash) : false;
 
     if (!user || !passwordOk) {
-      await this.audit.record({ action: 'auth.login.failed', entity: 'Auth', meta: { phone } });
-      throw new UnauthorizedException('Invalid phone or password');
+      await this.audit.record({ action: 'auth.login.failed', entity: 'Auth', meta: { email } });
+      throw new UnauthorizedException('Invalid email or password');
     }
 
     if (!user.active) {
@@ -112,7 +112,7 @@ export class AuthService {
   private async issueTokens(user: User): Promise<AuthTokens> {
     const accessPayload: JwtAccessPayload = {
       sub: user.id,
-      phone: user.phone,
+      email: user.email,
       name: user.name,
       role: user.role,
     };

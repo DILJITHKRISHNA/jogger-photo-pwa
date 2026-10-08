@@ -187,33 +187,35 @@ async function main() {
   console.log(`Seeded ${CATEGORY_NAMES.length} categories.`);
 
   // --- users ---
-  const adminPhone = process.env.SEED_ADMIN_PHONE ?? '9999999999';
+  // Placeholder logins for a fresh database only — real staff accounts come
+  // from the email_login migration.
+  const adminEmail = (process.env.SEED_ADMIN_EMAIL ?? 'admin@example.com').toLowerCase();
   const adminPassword = process.env.SEED_ADMIN_PASSWORD ?? 'ChangeMe123!';
   const admin = await prisma.user.upsert({
-    where: { phone: adminPhone },
+    where: { email: adminEmail },
     update: {},
     create: {
       name: 'Admin',
-      phone: adminPhone,
+      email: adminEmail,
       passwordHash: await bcrypt.hash(adminPassword, 12),
       role: Role.ADMIN,
     },
   });
-  console.log('Seeded ADMIN user:', admin.phone, '(password from SEED_ADMIN_PASSWORD or default)');
+  console.log('Seeded ADMIN user:', admin.email, '(password from SEED_ADMIN_PASSWORD or default)');
 
-  const execPhone = process.env.SEED_EXEC_PHONE ?? '9000000001';
+  const execEmail = (process.env.SEED_EXEC_EMAIL ?? 'user@example.com').toLowerCase();
   const execPassword = process.env.SEED_EXEC_PASSWORD ?? 'ChangeMe123!';
   const exec = await prisma.user.upsert({
-    where: { phone: execPhone },
+    where: { email: execEmail },
     update: {},
     create: {
       name: 'User',
-      phone: execPhone,
+      email: execEmail,
       passwordHash: await bcrypt.hash(execPassword, 12),
       role: Role.EXECUTIVE,
     },
   });
-  console.log('Seeded EXECUTIVE user:', exec.phone, '(password from SEED_EXEC_PASSWORD or default)');
+  console.log('Seeded EXECUTIVE user:', exec.email, '(password from SEED_EXEC_PASSWORD or default)');
 
   // --- demo products + placeholder photos ---
   for (const [article, colour, categoryName] of DEMO_PRODUCTS) {

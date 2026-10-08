@@ -29,7 +29,7 @@ function tokensMatch(presented: string, storedHashHex: string): boolean {
 
 export interface CreateUserInput {
   name: string;
-  phone: string;
+  email: string;
   password: string;
   role?: Role;
 }
@@ -39,8 +39,8 @@ export interface CreateUserInput {
 export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
 
-  findByPhone(phone: string) {
-    return this.prisma.user.findUnique({ where: { phone } });
+  findByEmail(email: string) {
+    return this.prisma.user.findUnique({ where: { email: email.trim().toLowerCase() } });
   }
 
   findById(id: string) {
@@ -60,7 +60,7 @@ export class UsersService {
     return this.prisma.user.create({
       data: {
         name: input.name,
-        phone: input.phone,
+        email: input.email.trim().toLowerCase(),
         passwordHash,
         role: input.role ?? Role.EXECUTIVE,
       },

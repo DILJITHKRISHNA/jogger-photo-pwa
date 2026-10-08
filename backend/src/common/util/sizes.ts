@@ -1,4 +1,4 @@
-/** Size ranges from the Master Excel "Size" column, e.g. "6x10" or "6x10, 7x10". */
+/** Size ranges from the Stock Excel "Size" column, e.g. "6x10" or "6x10, 7x10". */
 
 /** "6 X 10" / "6×10" / "6*10" → "6x10"; other labels are upper-cased (e.g. "xl" → "XL"). */
 export function normalizeSize(value: string): string {

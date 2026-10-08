@@ -30,7 +30,10 @@ enum ImportType {
 model User {
   id       String @id @default(cuid())
   name     String
-  phone    String @unique
+  /// Login ID (lower-case). Optional only so pre-email accounts survive the switch.
+  email    String? @unique
+  /// Legacy login ID from before email sign-in — no longer used to log in.
+  phone    String? @unique
   passwordHash String
   role     Role   @default(EXECUTIVE)
   active   Boolean @default(true)
@@ -125,9 +128,6 @@ model MasterEntry {
   category String
   brand    String?
   gender   String?
-  /// Size ranges from the Master Excel "Size" column (e.g. 6x10, 7x10) — the
-  /// level under each category in Bulk Photos / Today's Stock.
-  sizes    String[] @default([])
 
   @@unique([article, colour])
   @@index([article, colour])
@@ -140,6 +140,9 @@ model StockEntry {
   article   String
   colour    String
   category  String?
+  /// Size ranges from the Stock Excel "Size" column (e.g. 6x10, 7x10) — the
+  /// size level under each category in Today's Stock.
+  sizes     String[] @default([])
   stockDate DateTime @default(now())
 
   @@index([article, colour])

@@ -4,7 +4,7 @@ import { ExcelService } from '../excel/excel.service';
 import { ImportsService } from '../imports/imports.service';
 import { normalizeArticle, normalizeColour, labelFor } from '../../common/util/product-key';
 import { slugify } from '../categories/categories.service';
-import { parseSizes, uniqueSizes } from '../../common/util/sizes';
+import { parseSizes } from '../../common/util/sizes';
 import type { ImportRecord } from '../../generated/prisma/client';
 
 export type ImportKind = 'stock' | 'scheme' | 'new-model' | 'master';
@@ -79,7 +79,12 @@ export class ImportRunnerService {
       await this.prisma.$transaction([
         this.prisma.stockEntry.deleteMany({}),
         this.prisma.stockEntry.createMany({
-          data: rows.map((r) => ({ article: r.article, colour: r.colour, category: r.category })),
+          data: rows.map((r) => ({
+            article: r.article,
+            colour: r.colour,
+            category: r.category,
+            sizes: parseSizes(r.size),
+          })),
         }),
       ]);
     } else if (kind === 'scheme') {
@@ -175,6 +180,7 @@ export class ImportRunnerService {
               article: r.article,
               colour: r.colour,
               category: r.category,
+              sizes: parseSizes(r.size),
             })),
           });
         }
@@ -219,40 +225,17 @@ export class ImportRunnerService {
       rows.map((r) => r.gender),
     );
 
-    // The same Article + Colour may be listed on several rows, one per size
-    // — merge them into one entry (the first row's category/brand/gender wins).
-    const entries = new Map<
-      string,
-      {
-        article: string;
-        colour: string;
-        category: string;
-        brand: string | null;
-        gender: string | null;
-        sizes: string[];
-      }
-    >();
-    for (const r of rows) {
-      const key = `${r.article}::${r.colour}`;
-      const sizes = parseSizes(r.size);
-      const existing = entries.get(key);
-      if (existing) {
-        existing.sizes = uniqueSizes([...existing.sizes, ...sizes]);
-        continue;
-      }
-      entries.set(key, {
-        article: r.article,
-        colour: r.colour,
-        category: (r.category ?? '').trim(),
-        brand: r.brand?.trim() || null,
-        gender: r.gender?.trim() || null,
-        sizes,
-      });
-    }
-
     await this.prisma.$transaction([
       this.prisma.masterEntry.deleteMany({}),
-      this.prisma.masterEntry.createMany({ data: [...entries.values()] }),
+      this.prisma.masterEntry.createMany({
+        data: rows.map((r) => ({
+          article: r.article,
+          colour: r.colour,
+          category: (r.category ?? '').trim(),
+          brand: r.brand?.trim() || null,
+          gender: r.gender?.trim() || null,
+        })),
+      }),
     ]);
 
     await this.applyMasterTags();

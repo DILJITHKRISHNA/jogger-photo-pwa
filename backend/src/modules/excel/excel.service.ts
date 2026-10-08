@@ -191,20 +191,20 @@ export class ExcelService {
     const templates = {
       master: {
         sheetName: 'MASTER EXCEL',
-        header: ['Article', 'Colour', 'Category', 'Brand', 'Gender', 'Size'],
+        header: ['Article', 'Colour', 'Category', 'Brand', 'Gender'],
         sample: [
-          ['1001', 'BLACK', 'PU Gents', 'JOGGER', 'GENTS', '6x10'],
-          ['1001', 'BROWN', 'PU Gents', 'JOGGER', 'GENTS', '6x10, 7x10'],
-          ['111', 'LGRY', 'EVA', 'BOB LIFE', 'KIDS', '1x5'],
+          ['1001', 'BLACK', 'PU Gents', 'JOGGER', 'GENTS'],
+          ['1001', 'BROWN', 'PU Gents', 'JOGGER', 'GENTS'],
+          ['111', 'LGRY', 'EVA', 'BOB LIFE', 'KIDS'],
         ],
       },
       stock: {
         sheetName: 'STOCK EXCEL',
-        header: ['Article', 'Colour', 'Category'],
+        header: ['Article', 'Colour', 'Category', 'Size'],
         sample: [
-          ['111', 'LGRY', 'EVA'],
-          ['222', 'DGRN', 'EVA'],
-          ['222', 'KAKI', 'EVA'],
+          ['111', 'LGRY', 'EVA', '6x10'],
+          ['222', 'DGRN', 'EVA', '6x10, 7x10'],
+          ['222', 'KAKI', 'EVA', '7x10'],
         ],
       },
       scheme: {
@@ -239,12 +239,11 @@ export class ExcelService {
       const instructions = XLSX.utils.aoa_to_sheet([
         ['How to fill the Master Excel'],
         [''],
-        ['Keep the first row as the header: Article | Colour | Category | Brand | Gender | Size'],
+        ['Keep the first row as the header: Article | Colour | Category | Brand | Gender'],
         ['Add one row for every Article + Colour that has (or will have) a photo.'],
         ['The photo filename must match: ARTICLE COLOUR.jpg  e.g. 1001 BLACK.jpg'],
         ['Category is the group name used in Bulk Photos (e.g. PU Gents, EVA).'],
         ['Brand (e.g. JOGGER, BOB LIFE) and Gender (e.g. GENTS, LADIES, BOYS) are optional — they fill the Brand and Gender boxes in the app.'],
-        ['Size (e.g. 6x10, 7x10) is optional — inside each category the app shows one box per size. List several sizes in one cell separated by commas (6x10, 7x10), or repeat the Article + Colour on another row with the other size.'],
         ['The sample rows on the first sheet are examples — replace them with your real data.'],
         ['Save as .xlsx and import the file on the Master Excel screen.'],
       ]);

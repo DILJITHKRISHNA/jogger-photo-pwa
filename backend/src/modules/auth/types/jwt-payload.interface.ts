@@ -3,7 +3,7 @@ import { Role } from '../../../generated/prisma/enums';
 /** Claims embedded in the access token. */
 export interface JwtAccessPayload {
   sub: string; // userId
-  phone: string;
+  email: string | null;
   name: string;
   role: Role;
 }

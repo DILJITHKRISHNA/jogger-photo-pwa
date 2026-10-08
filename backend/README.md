@@ -41,13 +41,19 @@ Docker.
    npm run prisma:seed
    ```
 
-   Default logins (override via `SEED_ADMIN_PHONE` / `SEED_ADMIN_PASSWORD`
-   / `SEED_EXEC_PHONE` / `SEED_EXEC_PASSWORD` before seeding):
+   Default logins for a fresh database (override via `SEED_ADMIN_EMAIL` /
+   `SEED_ADMIN_PASSWORD` / `SEED_EXEC_EMAIL` / `SEED_EXEC_PASSWORD` before
+   seeding):
 
-   | Role | Phone | Password |
+   | Role | Email | Password |
    |---|---|---|
-   | ADMIN | `9999999999` | `ChangeMe123!` |
-   | EXECUTIVE | `9000000001` | `ChangeMe123!` |
+   | ADMIN | `admin@example.com` | `ChangeMe123!` |
+   | EXECUTIVE | `user@example.com` | `ChangeMe123!` |
+
+   Staff accounts (`@jogger.co.in`) are created by the `email_login`
+   migration, which copies the password of the existing admin / executive
+   account onto them — on a fresh database there is none to copy, so it
+   adds nobody.
 
 4. Start the API:
 
@@ -59,7 +65,7 @@ Docker.
 
 ## Auth
 
-- `POST /auth/login` — `{ phone, password }` → `{ user, accessToken }`,
+- `POST /auth/login` — `{ email, password }` → `{ user, accessToken }`,
   sets an httpOnly `refresh_token` cookie scoped to `/api/v1/auth`.
 - `POST /auth/refresh` — reads the refresh cookie, rotates it, returns a
   new access token.
@@ -76,7 +82,7 @@ login, refresh, logout, and catalogue mutation writes an `AuditLog` row
 
 There's no public self-signup — accounts are provisioned via the seed
 script (or, in future, an admin "create user" endpoint), matching the
-fixed phone+password login the brief called for.
+fixed email+password login.
 
 **Why JWT at all, given the logins are fixed?** It's not adding
 infrastructure to deploy or pay for — unlike Redis/S3, it's just app logic

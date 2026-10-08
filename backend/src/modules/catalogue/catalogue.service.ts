@@ -5,6 +5,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { PrismaService } from '../../prisma/prisma.service';
 import { normalizeArticle, normalizeColour } from '../../common/util/product-key';
+import { uniqueSizes } from '../../common/util/sizes';
 import type { Category, Product } from '../../generated/prisma/client';
 
 export interface ZipItem {
@@ -26,13 +27,13 @@ export interface ProductView {
   category: string | null;
   categorySlug: string | null;
   photoUrl: string;
-  /** Size ranges from the Master Excel (e.g. ["6x10", "7x10"]); empty if none. */
+  /** Size ranges from the Stock Excel (e.g. ["6x10", "7x10"]) — Today's Stock only; empty elsewhere. */
   sizes: string[];
 }
 
 type ProductWithCategory = Product & { category: Category | null };
 
-function toView(product: ProductWithCategory, sizes: Map<string, string[]>): ProductView {
+function toView(product: ProductWithCategory, sizes: string[] = []): ProductView {
   return {
     id: product.id,
     article: product.article,
@@ -40,7 +41,7 @@ function toView(product: ProductWithCategory, sizes: Map<string, string[]>): Pro
     category: product.category?.name ?? null,
     categorySlug: product.category?.slug ?? null,
     photoUrl: product.photoUrl,
-    sizes: sizes.get(`${product.article}::${product.colour}`) ?? [],
+    sizes,
   };
 }
 
@@ -48,19 +49,8 @@ function toView(product: ProductWithCategory, sizes: Map<string, string[]>): Pro
 export class CatalogueService {
   constructor(private readonly prisma: PrismaService) {}
 
-  /** Sizes live on the Master Excel rows, keyed by Article + Colour. */
-  private async sizesByKey(): Promise<Map<string, string[]>> {
-    const rows = await this.prisma.masterEntry.findMany({
-      where: { sizes: { isEmpty: false } },
-      select: { article: true, colour: true, sizes: true },
-    });
-    return new Map(rows.map((r) => [`${r.article}::${r.colour}`, r.sizes]));
-  }
-
-  private async toViews(products: ProductWithCategory[]): Promise<ProductView[]> {
-    if (products.length === 0) return [];
-    const sizes = await this.sizesByKey();
-    return products.map((p) => toView(p, sizes));
+  private toViews(products: ProductWithCategory[]): ProductView[] {
+    return products.map((p) => toView(p));
   }
 
   /** Exact Article + Colour lookup — backs the full-screen photo viewer. */
@@ -69,7 +59,7 @@ export class CatalogueService {
       where: { active: true, article: normalizeArticle(article), colour: normalizeColour(colour) },
       include: { category: true },
     });
-    return product ? (await this.toViews([product]))[0] : null;
+    return product ? toView(product) : null;
   }
 
   async searchByArticle(article: string): Promise<ProductView[]> {
@@ -140,12 +130,15 @@ export class CatalogueService {
     });
     const byKey = new Map(products.map((p) => [`${p.article}::${p.colour}`, p]));
 
-    const matched: ProductWithCategory[] = [];
+    // The same Article + Colour can be listed on several stock rows (one per
+    // size) — show the photo once, with every size it's listed under.
+    const sizesByKey = new Map<string, string[]>();
     for (const entry of stock) {
-      const product = byKey.get(`${entry.article}::${entry.colour}`);
-      if (product) matched.push(product);
+      const key = `${entry.article}::${entry.colour}`;
+      if (!byKey.has(key)) continue;
+      sizesByKey.set(key, uniqueSizes([...(sizesByKey.get(key) ?? []), ...entry.sizes]));
     }
-    const items = await this.toViews(matched);
+    const items = [...sizesByKey].map(([key, sizes]) => toView(byKey.get(key)!, sizes));
 
     return {
       items: items.sort((a, b) => a.article.localeCompare(b.article)),
@@ -166,7 +159,7 @@ export class CatalogueService {
       const product = byKey.get(`${entry.article}::${entry.colour}`);
       if (product) matched.push(product);
     }
-    const items = await this.toViews(matched);
+    const items = this.toViews(matched);
     return items.sort((a, b) => a.article.localeCompare(b.article));
   }
 
@@ -183,7 +176,7 @@ export class CatalogueService {
       const product = byKey.get(`${entry.article}::${entry.colour}`);
       if (product) matched.push(product);
     }
-    const items = await this.toViews(matched);
+    const items = this.toViews(matched);
     return items.sort((a, b) => a.article.localeCompare(b.article));
   }
 
