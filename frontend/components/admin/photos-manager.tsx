@@ -262,7 +262,9 @@ export function PhotosManager() {
 
         <Button className="mt-4 w-full sm:w-auto" disabled={uploading} onClick={handleUpload}>
           {uploading ? <Loader2 className="animate-spin" /> : <UploadCloud />}
-          Upload {files.length > 0 ? `${files.length} photo${files.length === 1 ? "" : "s"}` : ""}
+          {uploading
+            ? "Uploading photos..."
+            : `Upload ${files.length > 0 ? `${files.length} photo${files.length === 1 ? "" : "s"}` : ""}`}
         </Button>
 
         {lastSummary && (
