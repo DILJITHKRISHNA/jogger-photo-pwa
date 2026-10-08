@@ -211,7 +211,17 @@ export class ImportRunnerService {
   }
 
   /** Fully replace the master list, ensure categories/brands/genders exist, re-tag photos. */
-  private async importMaster(rows: ImportRow[]) {
+  private async importMaster(allRows: ImportRow[]) {
+    // The master list holds one row per Article + Colour — if the sheet repeats
+    // one, keep the first row and ignore the rest instead of failing the upload.
+    const seen = new Set<string>();
+    const rows = allRows.filter((r) => {
+      const key = `${r.article}::${r.colour}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
     await this.ensureNames(
       'category',
       rows.map((r) => r.category),
