@@ -12,8 +12,10 @@ export default function LoginPage() {
   const router = useRouter();
 
   useEffect(() => {
+    // The user app is for everyone, admins included — admins reach the admin
+    // panel through /admin, not by signing in here.
     if (status === "authenticated" && user) {
-      router.replace(user.role === "ADMIN" ? "/admin" : "/");
+      router.replace("/");
     }
   }, [status, user, router]);
 

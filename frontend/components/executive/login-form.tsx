@@ -24,7 +24,7 @@ export function LoginForm() {
     try {
       const user = await login(email, password);
       toast.success(`Welcome, ${user.name.split(" ")[0]}!`);
-      router.push(user.role === "ADMIN" ? "/admin" : "/");
+      router.push("/");
     } catch (error) {
       toast.error(error instanceof ApiError ? error.message : "Sign-in failed");
     } finally {
