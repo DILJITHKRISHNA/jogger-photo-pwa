@@ -81,28 +81,80 @@ export function PhotosManager() {
       return;
     }
 
+    const BATCH_SIZE = 50;
+    const totalFiles = files.length;
+
     setUploading(true);
+
+    const summary: UploadSummary = {
+      total: totalFiles,
+      success: 0,
+      newCount: 0,
+      replacedCount: 0,
+      errorCount: 0,
+      uncategorisedCount: 0,
+      errors: [],
+    };
+
     try {
-      const formData = new FormData();
-      files.forEach((file) => formData.append("files", file));
+      for (let start = 0; start < totalFiles; start += BATCH_SIZE) {
+        const batch = files.slice(start, start + BATCH_SIZE);
 
-      const data = await apiFetch<UploadSummary>("/products/photos", {
-        method: "POST",
-        body: formData,
-      });
+        const formData = new FormData();
 
-      setLastSummary(data);
+        batch.forEach((file) => {
+          formData.append("files", file);
+        });
+
+        const data = await apiFetch<UploadSummary>("/products/photos", {
+          method: "POST",
+          body: formData,
+        });
+
+        summary.success += data.success;
+        summary.newCount += data.newCount;
+        summary.replacedCount += data.replacedCount;
+        summary.errorCount += data.errorCount;
+        summary.uncategorisedCount =
+          (summary.uncategorisedCount ?? 0) +
+          (data.uncategorisedCount ?? 0);
+
+        summary.errors.push(...data.errors);
+
+        const uploadedSoFar = Math.min(start + batch.length, totalFiles);
+
+        toast.success(
+          `Uploaded ${uploadedSoFar} of ${totalFiles} photos`,
+        );
+      }
+
+      setLastSummary(summary);
+
       setFiles([]);
-      if (inputRef.current) inputRef.current.value = "";
+
+      if (inputRef.current) {
+        inputRef.current.value = "";
+      }
+
       await refresh();
 
-      if (data.errorCount === 0) {
-        toast.success(`Uploaded ${data.success} photo${data.success === 1 ? "" : "s"}`);
+      if (summary.errorCount === 0) {
+        toast.success(
+          `Uploaded ${summary.success} photo${summary.success === 1 ? "" : "s"} successfully`,
+        );
       } else {
-        toast.warning(`Uploaded ${data.success}, ${data.errorCount} skipped — see details below`);
+        toast.warning(
+          `Uploaded ${summary.success}, ${summary.errorCount} skipped — see details below`,
+        );
       }
     } catch (error) {
-      toast.error(error instanceof ApiError ? error.message : "Upload failed");
+      setLastSummary(summary);
+
+      toast.error(
+        error instanceof ApiError
+          ? error.message
+          : "Upload failed",
+      );
     } finally {
       setUploading(false);
     }
