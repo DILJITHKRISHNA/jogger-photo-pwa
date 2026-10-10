@@ -40,7 +40,7 @@ export function SearchView({ initialArticle }: { initialArticle: string }) {
           value={text}
           onChange={setText}
           onSubmit={(value) => setSubmitted(value.trim())}
-          placeholder="Search article, e.g. SS5205 or 5205"
+          placeholder="Search article"
           showClear
         />
       </div>

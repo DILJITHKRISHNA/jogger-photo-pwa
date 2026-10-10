@@ -29,7 +29,7 @@ export function HomeSearchBar() {
         value={value}
         onChange={setValue}
         onSubmit={go}
-        placeholder="Search article, e.g. SS5205"
+        placeholder="Search article"
         className="flex-1"
         inputClassName="border-0 bg-card shadow-sm ring-1 ring-border"
       />
