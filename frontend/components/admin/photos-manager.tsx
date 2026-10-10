@@ -35,27 +35,72 @@ interface UploadSummary {
 }
 
 const BATCH_SIZE = 25;
+const UPLOAD_CONCURRENCY = 3; // parallel requests; the API rate limit is 100/min
+const COMPRESS_CONCURRENCY = 4; // photos resized at once inside a batch
+const COMPRESS_TIMEOUT_MS = 20_000;
 const MAX_UPLOAD_MB = 25; // keep in sync with the API per-file limit (products.controller.ts)
 const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024;
-const MAX_EDGE_PX = 2000;
+const MAX_EDGE_PX = 1600;
 
-/** Downscales large photos to ~2000px JPEG/WebP-safe output; returns the original if it is already small or can't be decoded. */
+/** Runs `worker` over `items` with at most `limit` in flight at once. */
+async function runPool<T>(items: T[], limit: number, worker: (item: T, index: number) => Promise<void>) {
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, async () => {
+      while (next < items.length) {
+        const i = next++;
+        await worker(items[i], i);
+      }
+    }),
+  );
+}
+
+/** Stem used to detect files that map to the same Article + Colour product. */
+function productStem(name: string): string {
+  const dot = name.lastIndexOf(".");
+  return (dot > 0 ? name.slice(0, dot) : name).trim().toUpperCase().replace(/\s+/g, " ");
+}
+
+/**
+ * Downscales large photos (decoded at reduced size, so full-resolution
+ * bitmaps never sit in memory). Falls back to the original file if the
+ * photo is already small, can't be decoded, or takes too long.
+ */
 async function compressImage(file: File): Promise<File> {
   if (file.size <= 1.5 * 1024 * 1024) return file;
-  try {
-    const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
-    const scale = Math.min(1, MAX_EDGE_PX / Math.max(bitmap.width, bitmap.height));
+
+  const work = async (): Promise<File> => {
+    const probe = await createImageBitmap(file, { imageOrientation: "from-image" });
+    const { width, height } = probe;
+    probe.close();
+    const scale = Math.min(1, MAX_EDGE_PX / Math.max(width, height));
+    const targetW = Math.max(1, Math.round(width * scale));
+    const targetH = Math.max(1, Math.round(height * scale));
+
+    const bitmap = await createImageBitmap(file, {
+      imageOrientation: "from-image",
+      resizeWidth: targetW,
+      resizeHeight: targetH,
+      resizeQuality: "medium",
+    });
     const canvas = document.createElement("canvas");
-    canvas.width = Math.round(bitmap.width * scale);
-    canvas.height = Math.round(bitmap.height * scale);
-    canvas.getContext("2d")!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    canvas.getContext("2d")!.drawImage(bitmap, 0, 0);
     bitmap.close();
 
-    const isPng = file.type === "image/png";
-    const type = isPng ? "image/png" : "image/jpeg";
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type, 0.85));
+    const type = file.type === "image/png" ? "image/png" : "image/jpeg";
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type, 0.8));
+    canvas.width = canvas.height = 0; // release canvas memory
     if (!blob || blob.size >= file.size) return file;
     return new File([blob], file.name, { type, lastModified: file.lastModified });
+  };
+
+  try {
+    return await Promise.race([
+      work(),
+      new Promise<File>((resolve) => setTimeout(() => resolve(file), COMPRESS_TIMEOUT_MS)),
+    ]);
   } catch {
     return file;
   }
@@ -68,7 +113,7 @@ export function PhotosManager() {
   const [files, setFiles] = useState<File[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const [progress, setProgress] = useState<{ prepared: number; uploaded: number; total: number } | null>(null);
   const [downloadingTemplate, setDownloadingTemplate] = useState(false);
   const [lastSummary, setLastSummary] = useState<UploadSummary | null>(null);
   const [filterCategoryId, setFilterCategoryId] = useState<string>("all");
@@ -109,9 +154,15 @@ export function PhotosManager() {
       return;
     }
 
+    // Files that map to the same Article + Colour would race each other when
+    // uploaded in parallel — keep the last one, report the rest.
+    const lastByStem = new Map<string, File>();
+    files.forEach((f) => lastByStem.set(productStem(f.name), f));
+    const queue = files.filter((f) => lastByStem.get(productStem(f.name)) === f);
+
     const totalFiles = files.length;
     setUploading(true);
-    setProgress({ done: 0, total: totalFiles });
+    setProgress({ prepared: 0, uploaded: 0, total: totalFiles });
 
     const summary: UploadSummary = {
       total: totalFiles,
@@ -123,54 +174,73 @@ export function PhotosManager() {
       errors: [],
     };
     const failed: File[] = [];
+    let prepared = totalFiles - queue.length;
+    let uploaded = 0;
+
+    if (queue.length < files.length) {
+      const skipped = files.length - queue.length;
+      summary.errorCount += skipped;
+      summary.errors.push({
+        row: 0,
+        message: `${skipped} file(s) skipped: same Article + Colour appears more than once in this selection (last one kept)`,
+      });
+    }
+
+    const batches: File[][] = [];
+    for (let i = 0; i < queue.length; i += BATCH_SIZE) batches.push(queue.slice(i, i + BATCH_SIZE));
+
+    const publish = () => setProgress({ prepared, uploaded, total: totalFiles });
 
     try {
-      // Shrink every photo first (phone photos are often >15 MB, which the
-      // API rejects). Filenames are preserved — they carry Article + Colour.
-      const prepared: File[] = [];
-      for (const file of files) {
-        const resized = await compressImage(file);
-        if (resized.size > MAX_UPLOAD_BYTES) {
-          summary.errorCount += 1;
-          summary.errors.push({
-            row: prepared.length + failed.length + 1,
-            message: `${file.name}: still larger than ${MAX_UPLOAD_MB} MB after resizing`,
-          });
-          failed.push(file);
-        } else {
-          prepared.push(resized);
+      // Each worker takes a batch: shrink its photos, upload it, move on. Only
+      // a few batches are ever in memory, so 2000 photos behave like 100.
+      await runPool(batches, UPLOAD_CONCURRENCY, async (batch, batchIndex) => {
+        const ready: { original: File; upload: File }[] = [];
+        await runPool(batch, COMPRESS_CONCURRENCY, async (original) => {
+          const upload = await compressImage(original);
+          prepared += 1;
+          publish();
+          if (upload.size > MAX_UPLOAD_BYTES) {
+            summary.errorCount += 1;
+            summary.errors.push({
+              row: batchIndex * BATCH_SIZE + 1,
+              message: `${original.name}: still larger than ${MAX_UPLOAD_MB} MB after resizing`,
+            });
+            failed.push(original);
+          } else {
+            ready.push({ original, upload });
+          }
+        });
+
+        if (ready.length > 0) {
+          const formData = new FormData();
+          ready.forEach(({ upload }) => formData.append("files", upload));
+          // One failing batch must not abort the rest — record it and carry on.
+          try {
+            const data = await apiFetch<UploadSummary>("/products/photos", {
+              method: "POST",
+              body: formData,
+            });
+            summary.success += data.success;
+            summary.newCount += data.newCount;
+            summary.replacedCount += data.replacedCount;
+            summary.errorCount += data.errorCount;
+            summary.uncategorisedCount =
+              (summary.uncategorisedCount ?? 0) + (data.uncategorisedCount ?? 0);
+            summary.errors.push(...data.errors);
+          } catch (error) {
+            const reason = error instanceof ApiError ? error.message : "Upload failed";
+            summary.errorCount += ready.length;
+            ready.forEach(({ original }) => {
+              summary.errors.push({ row: batchIndex * BATCH_SIZE + 1, message: `${original.name}: ${reason}` });
+              failed.push(original);
+            });
+          }
         }
-      }
 
-      for (let start = 0; start < prepared.length; start += BATCH_SIZE) {
-        const batch = prepared.slice(start, start + BATCH_SIZE);
-        const formData = new FormData();
-        batch.forEach((file) => formData.append("files", file));
-
-        // One failing batch must not abort the rest — record it and carry on.
-        try {
-          const data = await apiFetch<UploadSummary>("/products/photos", {
-            method: "POST",
-            body: formData,
-          });
-          summary.success += data.success;
-          summary.newCount += data.newCount;
-          summary.replacedCount += data.replacedCount;
-          summary.errorCount += data.errorCount;
-          summary.uncategorisedCount =
-            (summary.uncategorisedCount ?? 0) + (data.uncategorisedCount ?? 0);
-          summary.errors.push(...data.errors);
-        } catch (error) {
-          const reason = error instanceof ApiError ? error.message : "Upload failed";
-          summary.errorCount += batch.length;
-          batch.forEach((file, i) =>
-            summary.errors.push({ row: start + i + 1, message: `${file.name}: ${reason}` }),
-          );
-          failed.push(...files.filter((f) => batch.some((b) => b.name === f.name)));
-        }
-
-        setProgress({ done: Math.min(start + batch.length, prepared.length), total: totalFiles });
-      }
+        uploaded += batch.length;
+        publish();
+      });
 
       setLastSummary(summary);
       // Keep only the files that did not upload so a retry doesn't re-send everything.
@@ -297,7 +367,7 @@ export function PhotosManager() {
         <Button className="mt-4 w-full sm:w-auto" disabled={uploading} onClick={handleUpload}>
           {uploading ? <Loader2 className="animate-spin" /> : <UploadCloud />}
           {uploading
-            ? `Uploading ${progress?.done ?? 0} / ${progress?.total ?? files.length}…`
+            ? `Preparing ${progress?.prepared ?? 0} · Uploaded ${progress?.uploaded ?? 0} / ${progress?.total ?? files.length}`
             : `Upload ${files.length > 0 ? `${files.length} photo${files.length === 1 ? "" : "s"}` : ""}`}
         </Button>
 
