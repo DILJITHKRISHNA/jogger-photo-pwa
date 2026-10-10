@@ -85,13 +85,29 @@ export class ProductsService {
       });
     }
 
-    for (let i = 0; i < files.length; i++) {
+    // Same Article + Colour twice in one request would race on the upsert and
+    // the stored file — keep the last occurrence only.
+    const lastIndexByKey = new Map<string, number>();
+    files.forEach((f, idx) => {
+      const p = parsePhotoFilename(f.originalname);
+      if (p.ok) lastIndexByKey.set(`${p.article}::${p.colour}`, idx);
+    });
+
+    const processFile = async (i: number) => {
       const file = files[i];
       const parsed = parsePhotoFilename(file.originalname);
 
       if (!parsed.ok) {
         errors.push({ row: i + 1, message: `${parsed.original}: ${parsed.reason}` });
-        continue;
+        return;
+      }
+
+      if (lastIndexByKey.get(`${parsed.article}::${parsed.colour}`) !== i) {
+        errors.push({
+          row: i + 1,
+          message: `${parsed.original}: duplicate Article + Colour in this upload (a later file was used)`,
+        });
+        return;
       }
 
       try {
@@ -153,7 +169,17 @@ export class ProductsService {
           colour: parsed.colour,
         });
       }
-    }
+    };
+
+    // A few files at a time: storage writes and DB upserts overlap instead of
+    // running strictly one after another.
+    const CONCURRENCY = 5;
+    let next = 0;
+    await Promise.all(
+      Array.from({ length: Math.min(CONCURRENCY, files.length) }, async () => {
+        while (next < files.length) await processFile(next++);
+      }),
+    );
 
     return { uploaded, errors };
   }

@@ -100,14 +100,12 @@ export class StorageService implements OnModuleInit {
     await fs.mkdir(UPLOADS_DIR, { recursive: true });
 
     // Replace any existing photo for this Article + Colour so we never
-    // duplicate it under a different extension.
-    const existing = await fs.readdir(UPLOADS_DIR).catch(() => [] as string[]);
+    // duplicate it under a different extension. Checks the four known
+    // extensions directly instead of listing the whole uploads folder.
     await Promise.all(
-      existing
-        .filter((f) => f.startsWith(`${input.key}.`))
-        .map((f) =>
-          fs.unlink(path.join(UPLOADS_DIR, f)).catch(() => undefined),
-        ),
+      PHOTO_EXTENSIONS.filter((ext) => ext !== input.ext).map((ext) =>
+        fs.unlink(path.join(UPLOADS_DIR, `${input.key}.${ext}`)).catch(() => undefined),
+      ),
     );
 
     await fs.writeFile(path.join(UPLOADS_DIR, filename), input.buffer);
