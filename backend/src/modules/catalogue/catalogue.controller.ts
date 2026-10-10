@@ -19,6 +19,11 @@ export class CatalogueController {
     return this.catalogue.searchByArticle(article ?? '');
   }
 
+  @Get('suggest')
+  suggest(@Query('q') q: string) {
+    return this.catalogue.suggestArticles(q ?? '');
+  }
+
   @Get('product')
   getByKey(@Query('article') article: string, @Query('colour') colour: string) {
     return this.catalogue.getByKey(article ?? '', colour ?? '');

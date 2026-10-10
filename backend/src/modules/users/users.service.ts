@@ -3,6 +3,7 @@ import * as bcrypt from 'bcrypt';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Role } from '../../generated/prisma/enums';
+import type { Prisma, User } from '../../generated/prisma/client';
 
 const SALT_ROUNDS = 12;
 
@@ -65,6 +66,37 @@ export class UsersService {
         role: input.role ?? Role.EXECUTIVE,
       },
     });
+  }
+
+  listExecutives() {
+    return this.prisma.user
+      .findMany({ where: { role: Role.EXECUTIVE }, orderBy: { createdAt: 'desc' } })
+      .then((rows) => rows.map((u) => this.toListItem(u)));
+  }
+
+  /** Public shape for the admin list — never exposes the password or token hashes. */
+  toListItem(user: User) {
+    return {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      active: user.active,
+      createdAt: user.createdAt,
+    };
+  }
+
+  async updateExecutive(
+    id: string,
+    input: { active?: boolean; password?: string; name?: string },
+  ) {
+    const data: Prisma.UserUpdateInput = {};
+    if (input.name !== undefined) data.name = input.name;
+    if (input.password !== undefined) data.passwordHash = await this.hashPassword(input.password);
+    if (input.active !== undefined) data.active = input.active;
+    // Deactivating or resetting a password also revokes the refresh token, so
+    // an existing session can't quietly keep renewing itself.
+    if (input.active === false || input.password !== undefined) data.hashedRefreshToken = null;
+    return this.prisma.user.update({ where: { id }, data });
   }
 
   verifyPassword(plain: string, hash: string) {

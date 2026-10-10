@@ -6,6 +6,13 @@ import path from 'node:path';
 import { PrismaService } from '../../prisma/prisma.service';
 import { normalizeArticle, normalizeColour } from '../../common/util/product-key';
 import { uniqueSizes } from '../../common/util/sizes';
+import {
+  compactArticle,
+  isExactArticle,
+  matchesSearch,
+  matchesSuggestion,
+  suggestionRank,
+} from '../../common/util/article-search';
 import type { Category, Product } from '../../generated/prisma/client';
 
 export interface ZipItem {
@@ -62,15 +69,42 @@ export class CatalogueService {
     return product ? toView(product) : null;
   }
 
+  /**
+   * Full search for an article number or text. Matches are exact — the whole
+   * article, or one whole part of it ("5205" finds SS5205 but never 15205).
+   * If the query is itself an existing article, only that article is returned.
+   */
   async searchByArticle(article: string): Promise<ProductView[]> {
-    const needle = normalizeArticle(article);
-    if (!needle) return [];
+    if (!compactArticle(article)) return [];
+    const candidates = (await this.distinctArticles()).filter((a) => matchesSearch(a, article));
+    const exact = candidates.filter((a) => isExactArticle(a, article));
+    const articles = exact.length > 0 ? exact : candidates;
+    if (articles.length === 0) return [];
+
     const products = await this.prisma.product.findMany({
-      where: { active: true, article: { contains: needle } },
+      where: { active: true, article: { in: articles } },
       include: { category: true },
-      orderBy: { colour: 'asc' },
+      orderBy: [{ article: 'asc' }, { colour: 'asc' }],
     });
     return this.toViews(products);
+  }
+
+  /** Typeahead article suggestions while the user is still typing. */
+  async suggestArticles(query: string, limit = 8): Promise<string[]> {
+    if (!compactArticle(query)) return [];
+    return (await this.distinctArticles())
+      .filter((a) => matchesSuggestion(a, query))
+      .sort((a, b) => suggestionRank(a, query) - suggestionRank(b, query) || a.localeCompare(b))
+      .slice(0, limit);
+  }
+
+  private async distinctArticles(): Promise<string[]> {
+    const rows = await this.prisma.product.findMany({
+      where: { active: true },
+      distinct: ['article'],
+      select: { article: true },
+    });
+    return rows.map((r) => r.article);
   }
 
   async categoryGallery(slug: string): Promise<ProductView[]> {

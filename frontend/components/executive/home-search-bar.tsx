@@ -2,17 +2,18 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Search, ArrowRight } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 
-import { Input } from "@/components/ui/input";
+import { ArticleSearchBox } from "@/components/executive/article-search-box";
 import { Button } from "@/components/ui/button";
 
 export function HomeSearchBar() {
   const router = useRouter();
   const [value, setValue] = useState("");
 
-  function go() {
-    const params = value.trim() ? `?article=${encodeURIComponent(value.trim())}` : "";
+  function go(text: string) {
+    const trimmed = text.trim();
+    const params = trimmed ? `?article=${encodeURIComponent(trimmed)}` : "";
     router.push(`/search${params}`);
   }
 
@@ -21,19 +22,17 @@ export function HomeSearchBar() {
       className="flex items-center gap-2"
       onSubmit={(e) => {
         e.preventDefault();
-        go();
+        go(value);
       }}
     >
-      <div className="relative flex-1">
-        <Search className="pointer-events-none absolute top-1/2 left-3 size-4.5 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          inputMode="numeric"
-          placeholder="Search article number…"
-          className="h-12 rounded-2xl border-0 bg-card pl-10 text-[15px] shadow-sm ring-1 ring-border"
-        />
-      </div>
+      <ArticleSearchBox
+        value={value}
+        onChange={setValue}
+        onSubmit={go}
+        placeholder="Search article, e.g. SS5205"
+        className="flex-1"
+        inputClassName="border-0 bg-card shadow-sm ring-1 ring-border"
+      />
       <Button
         type="submit"
         size="icon-lg"

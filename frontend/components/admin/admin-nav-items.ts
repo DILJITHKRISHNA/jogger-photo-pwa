@@ -8,6 +8,7 @@ import {
   SearchCheck,
   History,
   FileSpreadsheet,
+  Users,
   type LucideIcon,
 } from "lucide-react";
 
@@ -26,6 +27,7 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { href: "/admin/upload/scheme", label: "Scheme Excel", icon: Tag },
   { href: "/admin/upload/new-model", label: "New Model Excel", icon: Sparkles },
   { href: "/admin/categories", label: "Categories", icon: FolderTree },
+  { href: "/admin/users", label: "Users", icon: Users },
   { href: "/admin/search", label: "Search / Check", icon: SearchCheck },
   { href: "/admin/import-history", label: "Import History", icon: History },
 ];

@@ -8,6 +8,15 @@ export interface AppUser {
   initials: string;
 }
 
+/** A user-side login managed from the admin Users screen. */
+export interface ManagedUser {
+  id: string;
+  name: string;
+  email: string | null;
+  active: boolean;
+  createdAt: string;
+}
+
 export interface Category {
   id: string;
   name: string;

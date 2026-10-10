@@ -1,18 +1,15 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api-client";
 import type { ProductView } from "@/lib/types";
 
-export function useArticleSearch(initialQuery: string) {
-  const [query, setQuery] = useState(initialQuery);
+/** Runs a full article search for `query` (exact — whole article or whole number/text part). */
+export function useArticleSearch(query: string) {
   const [results, setResults] = useState<ProductView[] | null>(null);
   const [loading, setLoading] = useState(false);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-
     const trimmed = query.trim();
     if (!trimmed) {
       setResults(null);
@@ -20,24 +17,54 @@ export function useArticleSearch(initialQuery: string) {
       return;
     }
 
+    let cancelled = false;
     setLoading(true);
-    debounceRef.current = setTimeout(async () => {
-      try {
-        const data = await apiFetch<ProductView[]>(
-          `/catalogue/search?article=${encodeURIComponent(trimmed)}`,
-        );
-        setResults(data);
-      } catch {
-        setResults([]);
-      } finally {
-        setLoading(false);
-      }
-    }, 250);
+    apiFetch<ProductView[]>(`/catalogue/search?article=${encodeURIComponent(trimmed)}`)
+      .then((data) => {
+        if (!cancelled) setResults(data);
+      })
+      .catch(() => {
+        if (!cancelled) setResults([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
 
     return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
+      cancelled = true;
     };
   }, [query]);
 
-  return { query, setQuery, results, loading };
+  return { results, loading };
+}
+
+/** Debounced typeahead — article suggestions for whatever is being typed. */
+export function useArticleSuggestions(text: string, enabled = true) {
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+
+  useEffect(() => {
+    const trimmed = text.trim();
+    if (!enabled || !trimmed) {
+      setSuggestions([]);
+      return;
+    }
+
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      apiFetch<string[]>(`/catalogue/suggest?q=${encodeURIComponent(trimmed)}`)
+        .then((data) => {
+          if (!cancelled) setSuggestions(data);
+        })
+        .catch(() => {
+          if (!cancelled) setSuggestions([]);
+        });
+    }, 150);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [text, enabled]);
+
+  return suggestions;
 }

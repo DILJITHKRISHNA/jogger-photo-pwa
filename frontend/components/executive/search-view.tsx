@@ -1,21 +1,26 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Search, X, ImageOff } from "lucide-react";
+import { ImageOff } from "lucide-react";
 
-import { Input } from "@/components/ui/input";
+import { ArticleSearchBox } from "@/components/executive/article-search-box";
 import { resolveMediaUrl } from "@/lib/api-client";
 import { useArticleSearch } from "@/features/catalogue/use-search";
 import type { ProductView } from "@/lib/types";
 
 export function SearchView({ initialArticle }: { initialArticle: string }) {
-  const { query, setQuery, results, loading } = useArticleSearch(initialArticle);
+  const [text, setText] = useState(initialArticle);
+  const [submitted, setSubmitted] = useState(initialArticle);
+  const { results, loading } = useArticleSearch(submitted);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+
+  // Editing the text after a search clears the stale results rather than leaving them on screen.
+  const query = text.trim() === submitted.trim() ? submitted : "";
 
   const grouped = useMemo(() => {
     if (!results) return [];
@@ -30,41 +35,34 @@ export function SearchView({ initialArticle }: { initialArticle: string }) {
   return (
     <div className="flex flex-1 flex-col">
       <div className="sticky top-14 z-20 border-b border-border bg-background/95 px-4 py-3 backdrop-blur">
-        <div className="relative">
-          <Search className="pointer-events-none absolute top-1/2 left-3 size-4.5 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            ref={inputRef}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            inputMode="numeric"
-            placeholder="Enter article number…"
-            className="h-12 rounded-2xl pl-10 text-[15px]"
-          />
-          {query && (
-            <button
-              type="button"
-              aria-label="Clear"
-              onClick={() => setQuery("")}
-              className="absolute top-1/2 right-3 -translate-y-1/2 text-muted-foreground"
-            >
-              <X className="size-4.5" />
-            </button>
-          )}
-        </div>
+        <ArticleSearchBox
+          ref={inputRef}
+          value={text}
+          onChange={setText}
+          onSubmit={(value) => setSubmitted(value.trim())}
+          placeholder="Search article, e.g. SS5205 or 5205"
+          showClear
+        />
       </div>
 
       <div className="flex-1 px-4 py-4">
-        {!query.trim() && (
+        {!text.trim() && (
           <p className="pt-10 text-center text-sm text-muted-foreground">
-            Start typing an article number to find its photos.
+            Type an article number or text to see suggestions, then pick one to see its photos.
           </p>
         )}
 
-        {query.trim() && loading && (
+        {text.trim() && !query && (
+          <p className="pt-10 text-center text-sm text-muted-foreground">
+            Pick a suggestion or press Enter to search.
+          </p>
+        )}
+
+        {query && loading && (
           <p className="pt-10 text-center text-sm text-muted-foreground">Searching…</p>
         )}
 
-        {query.trim() && !loading && results && results.length === 0 && (
+        {query && !loading && results && results.length === 0 && (
           <div className="flex flex-col items-center gap-2 pt-10 text-center">
             <ImageOff className="size-8 text-muted-foreground" />
             <p className="text-sm font-semibold">No photos found for &ldquo;{query}&rdquo;</p>
@@ -73,7 +71,7 @@ export function SearchView({ initialArticle }: { initialArticle: string }) {
         )}
 
         <div className="flex flex-col gap-5">
-          {grouped.map(([article, items]) => (
+          {(query ? grouped : []).map(([article, items]) => (
             <div key={article}>
               <p className="mb-2 text-xs font-bold tracking-wide text-muted-foreground uppercase">
                 Article {article} · {items.length} colour{items.length === 1 ? "" : "s"}
