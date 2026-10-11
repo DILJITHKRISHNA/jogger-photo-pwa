@@ -11,8 +11,8 @@ export default function SchemeUploadPage() {
       <ExcelUploadPanel
         type="scheme"
         title="Scheme Articles"
-        columnsHint="Article | Colour"
-        replaceSemantics="New rows are added and existing ones updated — nothing is removed automatically."
+        columnsHint="Article | Colour | Size (e.g. 6x10, or 6x10, 7x10)"
+        replaceSemantics="New rows are added and existing ones updated (including their sizes) — nothing is removed automatically. Executives see scheme articles grouped by Size."
       />
     </AdminShell>
   );

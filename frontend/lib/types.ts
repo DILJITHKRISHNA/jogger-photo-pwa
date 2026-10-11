@@ -48,7 +48,7 @@ export interface ProductView {
   category: string | null;
   categorySlug: string | null;
   photoUrl: string;
-  /** Size ranges from the Stock Excel (e.g. ["6x10", "7x10"]) — Today's Stock only; empty elsewhere. */
+  /** Size ranges from the Stock / Scheme Excel (e.g. ["6x10", "7x10"]) — Today's Stock and Scheme only; empty elsewhere. */
   sizes: string[];
 }
 
@@ -64,6 +64,7 @@ export interface SchemeEntry {
   id: string;
   article: string;
   colour: string;
+  sizes: string[];
   addedAt: string;
 }
 
