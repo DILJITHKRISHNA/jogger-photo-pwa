@@ -180,6 +180,7 @@ export class CatalogueService {
     };
   }
 
+  /** Scheme photos, each with the size(s) it is listed under — executives group by size. */
   async schemeGallery(): Promise<ProductView[]> {
     const scheme = await this.prisma.schemeEntry.findMany();
     const products = await this.prisma.product.findMany({
@@ -188,12 +189,11 @@ export class CatalogueService {
     });
     const byKey = new Map(products.map((p) => [`${p.article}::${p.colour}`, p]));
 
-    const matched: ProductWithCategory[] = [];
+    const items: ProductView[] = [];
     for (const entry of scheme) {
       const product = byKey.get(`${entry.article}::${entry.colour}`);
-      if (product) matched.push(product);
+      if (product) items.push(toView(product, uniqueSizes(entry.sizes)));
     }
-    const items = this.toViews(matched);
     return items.sort((a, b) => a.article.localeCompare(b.article));
   }
 

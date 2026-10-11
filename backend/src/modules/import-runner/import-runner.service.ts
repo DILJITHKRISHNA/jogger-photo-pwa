@@ -4,7 +4,7 @@ import { ExcelService } from '../excel/excel.service';
 import { ImportsService } from '../imports/imports.service';
 import { normalizeArticle, normalizeColour, labelFor } from '../../common/util/product-key';
 import { slugify } from '../categories/categories.service';
-import { parseSizes } from '../../common/util/sizes';
+import { parseSizes, uniqueSizes } from '../../common/util/sizes';
 import type { ImportRecord } from '../../generated/prisma/client';
 
 export type ImportKind = 'stock' | 'scheme' | 'new-model' | 'master';
@@ -88,12 +88,22 @@ export class ImportRunnerService {
         }),
       ]);
     } else if (kind === 'scheme') {
+      // An Article + Colour can sit on several rows (one per size) — fold them
+      // into one entry carrying every size. A row with no size leaves a
+      // previously-saved size alone rather than wiping it.
+      const byKey = new Map<string, { article: string; colour: string; sizes: string[] }>();
+      for (const r of rows) {
+        const key = `${r.article}::${r.colour}`;
+        const entry = byKey.get(key) ?? { article: r.article, colour: r.colour, sizes: [] };
+        entry.sizes = uniqueSizes([...entry.sizes, ...parseSizes(r.size)]);
+        byKey.set(key, entry);
+      }
       await this.prisma.$transaction(
-        rows.map((r) =>
+        [...byKey.values()].map((e) =>
           this.prisma.schemeEntry.upsert({
-            where: { article_colour: { article: r.article, colour: r.colour } },
-            create: { article: r.article, colour: r.colour },
-            update: {},
+            where: { article_colour: { article: e.article, colour: e.colour } },
+            create: { article: e.article, colour: e.colour, sizes: e.sizes },
+            update: e.sizes.length > 0 ? { sizes: e.sizes } : {},
           }),
         ),
       );

@@ -154,6 +154,9 @@ model SchemeEntry {
   id      String   @id @default(cuid())
   article String
   colour  String
+  /// Size ranges from the Scheme Excel "Size" column (e.g. 6x10, 7x10) — the
+  /// level Scheme Articles is grouped by for executives.
+  sizes   String[] @default([])
   addedAt DateTime @default(now())
 
   @@unique([article, colour])

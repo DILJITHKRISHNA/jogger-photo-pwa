@@ -209,11 +209,11 @@ export class ExcelService {
       },
       scheme: {
         sheetName: 'SCHEME ARTICLE',
-        header: ['Article', 'Colour'],
+        header: ['Article', 'Colour', 'Size'],
         sample: [
-          ['111', 'LGRY'],
-          ['222', 'DGRN'],
-          ['222', 'KAKI'],
+          ['111', 'LGRY', '6x10'],
+          ['222', 'DGRN', '6x10, 7x10'],
+          ['222', 'KAKI', '7x10'],
         ],
       },
       'new-model': {
