@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Download, Loader2, Share2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { downloadPhoto, sharePhotos } from "@/lib/client/share";
+import { downloadPhoto, prefetchPhotos, sharePhotos } from "@/lib/client/share";
 import { filenameFor } from "@/lib/client/photo-filename";
 import { resolveMediaUrl } from "@/lib/api-client";
 
@@ -23,12 +23,17 @@ export function PhotoViewer({
   const [busy, setBusy] = useState<"share" | "download" | null>(null);
   const filename = filenameFor({ article, colour, photoUrl });
 
+  // Fetch the photo up front so Share opens the share sheet straight from the tap.
+  useEffect(() => {
+    prefetchPhotos([{ url: photoUrl, filename }]);
+  }, [photoUrl, filename]);
+
   async function handleShare() {
     setBusy("share");
     try {
       const result = await sharePhotos([{ url: photoUrl, filename }], `${article} · ${colour}`);
       if (result === "shared") toast.success("Shared");
-      else if (result === "downloaded") toast.success("Saved to your downloads");
+      else if (result === "downloaded") toast.success("Sharing isn't supported here — saved to your downloads");
     } catch {
       toast.error("Couldn't share this photo");
     } finally {
@@ -36,10 +41,15 @@ export function PhotoViewer({
     }
   }
 
-  function handleDownload() {
+  async function handleDownload() {
     setBusy("download");
-    downloadPhoto({ url: photoUrl, filename });
-    setTimeout(() => setBusy(null), 400);
+    try {
+      await downloadPhoto({ url: photoUrl, filename });
+    } catch {
+      toast.error("Download failed");
+    } finally {
+      setBusy(null);
+    }
   }
 
   return (

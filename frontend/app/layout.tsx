@@ -3,6 +3,7 @@ import { Manrope } from "next/font/google";
 
 import { Toaster } from "@/components/ui/sonner";
 import { ServiceWorkerRegister } from "@/components/service-worker-register";
+import { NavigationTracker } from "@/components/navigation-tracker";
 import { AuthProvider } from "@/providers/auth-provider";
 
 import "./globals.css";
@@ -58,6 +59,7 @@ export default function RootLayout({
         <AuthProvider>{children}</AuthProvider>
         <Toaster richColors closeButton position="top-center" />
         <ServiceWorkerRegister />
+        <NavigationTracker />
       </body>
     </html>
   );

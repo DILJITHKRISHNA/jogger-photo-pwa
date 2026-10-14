@@ -1,13 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CheckSquare, Download, Loader2, Share2, Square, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { PhotoCard } from "@/components/executive/photo-card";
 import {
-  downloadPhotosAsZip,
+  downloadPhotos,
+  prefetchPhotos,
   sharePhotos,
   type ShareablePhoto,
 } from "@/lib/client/share";
@@ -75,6 +76,16 @@ export function ProductGallery({
       .map((i) => ({ url: i.photoUrl, filename: filenameFor(i) }));
   }
 
+  // Fetch selected photos in the background so Share opens the share sheet
+  // straight from the tap, however many are selected.
+  useEffect(() => {
+    prefetchPhotos(
+      items
+        .filter((i) => selected.has(i.id))
+        .map((i) => ({ url: i.photoUrl, filename: filenameFor(i) })),
+    );
+  }, [items, selected]);
+
   async function handleShare() {
     const photos = selectedPhotos();
     if (photos.length === 0) return;
@@ -82,7 +93,7 @@ export function ProductGallery({
     try {
       const result = await sharePhotos(photos, "Jogger Footwear");
       if (result === "shared") toast.success("Shared");
-      else if (result === "downloaded") toast.success("Saved to your downloads");
+      else if (result === "downloaded") toast.success("Sharing isn't supported here — saved to your downloads");
     } catch {
       toast.error("Couldn't share those photos");
     } finally {
@@ -95,15 +106,8 @@ export function ProductGallery({
     if (photos.length === 0) return;
     setBusy("download");
     try {
-      if (photos.length > 1) {
-        await downloadPhotosAsZip(photos, zipName);
-        toast.success(`Downloaded ${photos.length} photos as a ZIP`);
-      } else {
-        const link = document.createElement("a");
-        link.href = photos[0].url;
-        link.download = photos[0].filename;
-        link.click();
-      }
+      await downloadPhotos(photos, zipName);
+      if (photos.length > 1) toast.success(`Downloaded ${photos.length} photos as a ZIP`);
     } catch {
       toast.error("Download failed");
     } finally {
