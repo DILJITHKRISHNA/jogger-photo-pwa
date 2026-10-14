@@ -73,20 +73,30 @@ function canShareFiles(files: File[]): boolean {
   return typeof navigator.canShare !== "function" || navigator.canShare({ files });
 }
 
-/**
- * Splits files into the fewest groups the browser accepts in one share —
- * some browsers cap the number or total size of shared files.
- */
+// Chrome (incl. Android) accepts at most 10 files and 50 MB per share; Safari
+// has no such cap. Every rejected canShare() call logs "Share too large", so
+// groups are sized up front instead of probed.
+const MAX_FILES_PER_SHARE = 10;
+const MAX_BYTES_PER_SHARE = 45 * 1024 * 1024;
+
+/** One share when the browser accepts it, otherwise groups of up to 10 photos. */
 function shareableChunks(files: File[]): File[][] {
+  if (canShareFiles(files)) return [files];
+
   const chunks: File[][] = [];
-  let start = 0;
-  while (start < files.length) {
-    // Largest run from `start` the browser accepts (canShare is a cheap, synchronous check).
-    let end = files.length;
-    while (end - start > 1 && !canShareFiles(files.slice(start, end))) end -= 1;
-    chunks.push(files.slice(start, end));
-    start = end;
+  let current: File[] = [];
+  let bytes = 0;
+  for (const file of files) {
+    const full = current.length >= MAX_FILES_PER_SHARE || bytes + file.size > MAX_BYTES_PER_SHARE;
+    if (current.length > 0 && full) {
+      chunks.push(current);
+      current = [];
+      bytes = 0;
+    }
+    current.push(file);
+    bytes += file.size;
   }
+  if (current.length > 0) chunks.push(current);
   return chunks;
 }
 
@@ -137,9 +147,12 @@ async function shareChunks(
     return "pending";
   }
   if (index + 1 < chunks.length) {
+    // The browser shares at most 10 photos at a time — one tap per next group.
+    const total = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+    const sent = chunks.slice(0, index + 1).reduce((sum, chunk) => sum + chunk.length, 0);
     offerTap(
-      `Shared part ${index + 1} of ${chunks.length}`,
-      `Share part ${index + 2}`,
+      `Sent ${sent} of ${total} photos`,
+      `Share next ${chunks[index + 1].length}`,
       chunks,
       index + 1,
       title,
