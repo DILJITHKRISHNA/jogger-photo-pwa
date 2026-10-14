@@ -12,10 +12,10 @@ export interface ShareablePhoto {
 
 /*
  * Browsers only open the share sheet if navigator.share() is called right
- * after a tap ("user activation"). Fetching many photos *after* the tap takes
- * too long and the share is refused — so photos are fetched ahead of time
- * (as soon as they're selected / shown) and cached here, letting the Share
- * tap call navigator.share() immediately.
+ * after a tap ("user activation"). Fetching photos *after* the tap takes too
+ * long and the share is refused — so each batch is fetched ahead of time and
+ * cached here, letting the Share tap call navigator.share() immediately.
+ * Only the next batch is held in memory, so hundreds of photos stay cheap.
  */
 const fileCache = new Map<string, Promise<File>>();
 const readyFiles = new Map<string, File>();
@@ -50,9 +50,12 @@ function loadFile(photo: ShareablePhoto): Promise<File> {
   return pending;
 }
 
-/** Start fetching photos in the background so a later Share tap is instant. */
-export function prefetchPhotos(photos: ShareablePhoto[]): void {
-  for (const photo of photos) loadFile(photo).catch(() => undefined);
+function releaseFiles(photos: ShareablePhoto[]): void {
+  for (const photo of photos) {
+    const key = cacheKey(photo);
+    fileCache.delete(key);
+    readyFiles.delete(key);
+  }
 }
 
 function filesIfReady(photos: ShareablePhoto[]): File[] | null {
@@ -69,40 +72,61 @@ export function canUseNativeShare(): boolean {
   return typeof navigator !== "undefined" && typeof navigator.share === "function";
 }
 
-function canShareFiles(files: File[]): boolean {
-  return typeof navigator.canShare !== "function" || navigator.canShare({ files });
+/** Whether this browser can share files at all — probed with one tiny file, never a real batch. */
+function canShareFiles(): boolean {
+  if (!canUseNativeShare()) return false;
+  if (typeof navigator.canShare !== "function") return true;
+  return navigator.canShare({ files: [new File([""], "photo.jpg", { type: "image/jpeg" })] });
 }
 
-// Chrome (incl. Android) accepts at most 10 files and 50 MB per share; Safari
-// has no such cap. WhatsApp drops out of the share sheet above 100 photos, so
-// no share goes beyond that. Every rejected canShare() call logs "Share too
-// large", so groups are sized up front instead of probed.
+/*
+ * Batch sizes. Chrome's engine (Chrome, Edge, Samsung Internet — on Android
+ * and desktop) shares at most 10 files / 50 MB at once and logs "Share too
+ * large" for anything more, so it's never asked for more. Elsewhere (iPhone)
+ * there's no file cap, but WhatsApp leaves the share sheet above 100 photos.
+ */
+const CHROMIUM_MAX_FILES = 10;
 const WHATSAPP_MAX_FILES = 100;
-const CHROME_MAX_FILES = 10;
 const MAX_BYTES_PER_SHARE = 45 * 1024 * 1024;
 
-/** One share when possible, otherwise groups of up to 100 (or 10 on Chrome). */
-function shareableChunks(files: File[]): File[][] {
-  const head = files.slice(0, WHATSAPP_MAX_FILES);
-  if (files.length === head.length && canShareFiles(files)) return [files];
-  const maxFiles =
-    files.length > head.length && canShareFiles(head) ? WHATSAPP_MAX_FILES : CHROME_MAX_FILES;
+function isChromiumEngine(): boolean {
+  const ua = navigator.userAgent;
+  // Chrome/Edge/Firefox on iOS run on Safari's engine — no 10-file cap there.
+  return /Chrome\/|Chromium\//.test(ua) && !/CriOS|EdgiOS|FxiOS/.test(ua);
+}
 
-  const chunks: File[][] = [];
-  let current: File[] = [];
+function photosPerShare(): number {
+  return isChromiumEngine() ? CHROMIUM_MAX_FILES : WHATSAPP_MAX_FILES;
+}
+
+function batchesOf(photos: ShareablePhoto[]): ShareablePhoto[][] {
+  const size = photosPerShare();
+  const batches: ShareablePhoto[][] = [];
+  for (let i = 0; i < photos.length; i += size) batches.push(photos.slice(i, i + size));
+  return batches;
+}
+
+/** Fetch the first batch in the background so the Share tap opens the sheet instantly. */
+export function prefetchPhotos(photos: ShareablePhoto[]): void {
+  for (const photo of photos.slice(0, photosPerShare())) loadFile(photo).catch(() => undefined);
+}
+
+/** Split a batch further if its photos add up to more than one share can carry. */
+function splitBySize(batch: ShareablePhoto[], files: File[]): ShareablePhoto[][] {
+  const parts: ShareablePhoto[][] = [];
+  let current: ShareablePhoto[] = [];
   let bytes = 0;
-  for (const file of files) {
-    const full = current.length >= maxFiles || bytes + file.size > MAX_BYTES_PER_SHARE;
-    if (current.length > 0 && full) {
-      chunks.push(current);
+  files.forEach((file, i) => {
+    if (current.length > 0 && bytes + file.size > MAX_BYTES_PER_SHARE) {
+      parts.push(current);
       current = [];
       bytes = 0;
     }
-    current.push(file);
+    current.push(batch[i]);
     bytes += file.size;
-  }
-  if (current.length > 0) chunks.push(current);
-  return chunks;
+  });
+  if (current.length > 0) parts.push(current);
+  return parts;
 }
 
 function saveBlob(blob: Blob, filename: string): void {
@@ -139,26 +163,53 @@ async function shareFiles(files: File[], title: string): Promise<ShareOutcome> {
   }
 }
 
-/** Shares chunk `index`, then offers a tap-to-continue button for the next one. */
-async function shareChunks(
-  chunks: File[][],
+/** Shares batch `index`, then offers a tap-to-continue button for the next one. */
+async function shareBatch(
+  batches: ShareablePhoto[][],
   index: number,
   title: string,
 ): Promise<"shared" | "cancelled" | "pending"> {
-  const outcome = await shareFiles(chunks[index], title);
+  let files = filesIfReady(batches[index]) ?? (await Promise.all(batches[index].map(loadFile)));
+
+  // Safety net for a browser with a file cap we didn't recognise: fall back to
+  // Chrome-sized batches. (Never runs on Chrome, so no "Share too large" log.)
+  if (
+    files.length > CHROMIUM_MAX_FILES &&
+    typeof navigator.canShare === "function" &&
+    !navigator.canShare({ files })
+  ) {
+    const smaller: ShareablePhoto[][] = [];
+    for (let i = 0; i < batches[index].length; i += CHROMIUM_MAX_FILES) {
+      smaller.push(batches[index].slice(i, i + CHROMIUM_MAX_FILES));
+    }
+    batches.splice(index, 1, ...smaller);
+    files = files.slice(0, CHROMIUM_MAX_FILES);
+  }
+
+  const parts = splitBySize(batches[index], files);
+  if (parts.length > 1) {
+    batches.splice(index, 1, ...parts);
+    files = files.slice(0, parts[0].length);
+  }
+
+  // While the share sheet is open, fetch the next batch so "Share next" is instant.
+  if (index + 1 < batches.length) prefetchBatch(batches[index + 1]);
+
+  const outcome = await shareFiles(files, title);
   if (outcome === "cancelled") return "cancelled";
   if (outcome === "needs-tap") {
-    offerTap("Photos ready", "Share now", chunks, index, title);
+    offerTap("Photos ready", "Share now", batches, index, title);
     return "pending";
   }
-  if (index + 1 < chunks.length) {
-    // The browser shares at most 10 photos at a time — one tap per next group.
-    const total = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
-    const sent = chunks.slice(0, index + 1).reduce((sum, chunk) => sum + chunk.length, 0);
+
+  releaseFiles(batches[index]); // sent — free the memory
+  if (index + 1 < batches.length) {
+    const total = batches.reduce((sum, batch) => sum + batch.length, 0);
+    const sent = batches.slice(0, index + 1).reduce((sum, batch) => sum + batch.length, 0);
     offerTap(
       `Sent ${sent} of ${total} photos`,
-      `Share next ${chunks[index + 1].length}`,
-      chunks,
+      `Share next ${batches[index + 1].length}`,
+      batches,
       index + 1,
       title,
     );
@@ -167,14 +218,24 @@ async function shareChunks(
   return "shared";
 }
 
+function prefetchBatch(batch: ShareablePhoto[]): void {
+  for (const photo of batch) loadFile(photo).catch(() => undefined);
+}
+
 /** A fresh tap on the toast button gives the browser the user activation it needs. */
-function offerTap(message: string, label: string, chunks: File[][], index: number, title: string) {
+function offerTap(
+  message: string,
+  label: string,
+  batches: ShareablePhoto[][],
+  index: number,
+  title: string,
+) {
   toast(message, {
     duration: Infinity,
     action: {
       label,
       onClick: () => {
-        shareChunks(chunks, index, title).catch(() => toast.error("Couldn't share those photos"));
+        shareBatch(batches, index, title).catch(() => toast.error("Couldn't share those photos"));
       },
     },
   });
@@ -183,8 +244,10 @@ function offerTap(message: string, label: string, chunks: File[][], index: numbe
 /**
  * Shares product photos through the phone's native share sheet (WhatsApp,
  * Instagram, Telegram, Email, …) via the Web Share API — any number of
- * photos. Call `prefetchPhotos` beforehand so the share sheet opens straight
- * from the tap. Browsers without file sharing (most desktops) get downloads.
+ * photos, in batches the browser and WhatsApp accept (10 on Chrome, 100
+ * elsewhere), one tap per batch. Call `prefetchPhotos` beforehand so the
+ * share sheet opens straight from the tap. Browsers without file sharing
+ * (most desktops) get downloads.
  */
 export async function sharePhotos(
   photos: ShareablePhoto[],
@@ -192,19 +255,12 @@ export async function sharePhotos(
 ): Promise<"shared" | "downloaded" | "cancelled" | "pending"> {
   if (photos.length === 0) return "cancelled";
 
-  if (!canUseNativeShare()) {
+  if (!canShareFiles()) {
     await downloadPhotos(photos, title);
     return "downloaded";
   }
 
-  // Already fetched → share immediately, while the tap still counts.
-  const ready = filesIfReady(photos);
-  if (ready) return shareChunks(shareableChunks(ready), 0, title);
-
-  // Not fetched yet → fetch, then try; if the tap has expired by then, the
-  // user gets a "Share now" button rather than a silent download.
-  const files = await Promise.all(photos.map(loadFile));
-  return shareChunks(shareableChunks(files), 0, title);
+  return shareBatch(batchesOf(photos), 0, title);
 }
 
 /** Downloads photos without leaving the app: one file directly, several as a ZIP. */
