@@ -74,20 +74,25 @@ function canShareFiles(files: File[]): boolean {
 }
 
 // Chrome (incl. Android) accepts at most 10 files and 50 MB per share; Safari
-// has no such cap. Every rejected canShare() call logs "Share too large", so
-// groups are sized up front instead of probed.
-const MAX_FILES_PER_SHARE = 10;
+// has no such cap. WhatsApp drops out of the share sheet above 100 photos, so
+// no share goes beyond that. Every rejected canShare() call logs "Share too
+// large", so groups are sized up front instead of probed.
+const WHATSAPP_MAX_FILES = 100;
+const CHROME_MAX_FILES = 10;
 const MAX_BYTES_PER_SHARE = 45 * 1024 * 1024;
 
-/** One share when the browser accepts it, otherwise groups of up to 10 photos. */
+/** One share when possible, otherwise groups of up to 100 (or 10 on Chrome). */
 function shareableChunks(files: File[]): File[][] {
-  if (canShareFiles(files)) return [files];
+  const head = files.slice(0, WHATSAPP_MAX_FILES);
+  if (files.length === head.length && canShareFiles(files)) return [files];
+  const maxFiles =
+    files.length > head.length && canShareFiles(head) ? WHATSAPP_MAX_FILES : CHROME_MAX_FILES;
 
   const chunks: File[][] = [];
   let current: File[] = [];
   let bytes = 0;
   for (const file of files) {
-    const full = current.length >= MAX_FILES_PER_SHARE || bytes + file.size > MAX_BYTES_PER_SHARE;
+    const full = current.length >= maxFiles || bytes + file.size > MAX_BYTES_PER_SHARE;
     if (current.length > 0 && full) {
       chunks.push(current);
       current = [];

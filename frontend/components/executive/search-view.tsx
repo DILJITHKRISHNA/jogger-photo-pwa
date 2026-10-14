@@ -80,7 +80,7 @@ export function SearchView({ initialArticle }: { initialArticle: string }) {
                 {items.map((item) => (
                   <Link
                     key={item.id}
-                    href={`/product/${encodeURIComponent(item.article)}/${encodeURIComponent(item.colour)}`}
+                    href={`/product/${encodeURIComponent(item.article)}/${encodeURIComponent(item.colour)}?from=${encodeURIComponent(`/search?${new URLSearchParams({ article: submitted })}`)}`}
                     className="flex flex-col gap-1.5"
                   >
                     <div className="aspect-square overflow-hidden rounded-xl bg-muted">

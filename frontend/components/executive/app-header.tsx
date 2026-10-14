@@ -6,17 +6,19 @@ import { ChevronLeft } from "lucide-react";
 
 import { BrandMark } from "@/components/brand-mark";
 import { ExecutiveMenu } from "@/components/executive/executive-menu";
-import { hasPreviousPage } from "@/lib/client/nav-history";
+import { cameFrom } from "@/lib/client/nav-history";
 
 /**
- * `backHref` is the fallback parent page — the back arrow returns to the page
- * the user actually came from when there is one in this session.
+ * `backHref` is this page's parent — the back arrow always goes one level up
+ * (breadcrumb-style), never sideways to an unrelated page.
  */
 export function AppHeader({ title, backHref }: { title: string; backHref?: string }) {
   const router = useRouter();
 
   function handleBack(event: React.MouseEvent<HTMLAnchorElement>) {
-    if (!hasPreviousPage()) return; // follow the fallback link
+    // Parent is the page we just came from → step back so it keeps its scroll
+    // position; otherwise the link opens the parent.
+    if (!backHref || !cameFrom(backHref)) return;
     event.preventDefault();
     router.back();
   }

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Check, ImageOff } from "lucide-react";
 import { useState } from "react";
 
@@ -20,6 +21,8 @@ export function PhotoCard({
   onToggle: () => void;
 }) {
   const [errored, setErrored] = useState(false);
+  // The photo page's back arrow returns to this gallery.
+  const pathname = usePathname();
 
   const content = (
     <>
@@ -80,7 +83,7 @@ export function PhotoCard({
 
   return (
     <Link
-      href={`/product/${encodeURIComponent(item.article)}/${encodeURIComponent(item.colour)}`}
+      href={`/product/${encodeURIComponent(item.article)}/${encodeURIComponent(item.colour)}?from=${encodeURIComponent(pathname)}`}
       className="block w-full rounded-xl text-left transition-transform active:scale-[0.97]"
     >
       {content}
