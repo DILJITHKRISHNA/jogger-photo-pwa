@@ -3,6 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { normalizeArticle, normalizeColour } from '../../common/util/product-key';
 import { fileSafeKey, parsePhotoFilename } from '../../common/util/parse-photo-filename';
+import { compressPhoto } from '../../common/util/compress-photo';
 import { slugify } from '../categories/categories.service';
 
 export interface PhotoUploadFile {
@@ -119,7 +120,7 @@ export class ProductsService {
         const { url } = await this.storage.uploadPhoto({
           key,
           ext: parsed.ext,
-          buffer: file.buffer,
+          buffer: await compressPhoto(file.buffer, parsed.ext),
           contentType: file.mimetype || CONTENT_TYPES[parsed.ext] || 'application/octet-stream',
         });
 
