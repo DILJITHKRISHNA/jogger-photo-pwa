@@ -24,18 +24,115 @@ function cacheKey(photo: ShareablePhoto): string {
   return `${resolveMediaUrl(photo.url)}|${photo.filename}`;
 }
 
-async function fetchFile(photo: ShareablePhoto): Promise<File> {
+/*
+ * What gets shared is a small, standard JPEG (max ~1280 px, typically
+ * 150–300 KB), never the full-size original: big files blow past the
+ * browser's 50 MB share limit, exhaust phone memory and send slowly, and
+ * JPEG is the one format WhatsApp, Telegram, Instagram, email, … all accept
+ * as a normal photo (WebP, for instance, can arrive as a sticker).
+ */
+const SHARE_MAX_EDGE_PX = 1280;
+const SHARE_JPEG_QUALITY = 0.8;
+/** JPEGs at or under this size are shared as they are. */
+const SMALL_ENOUGH_BYTES = 700 * 1024;
+/** Photos fetched + compressed at once — keeps a 100-photo batch light on phones. */
+const MAX_CONCURRENT_LOADS = 4;
+
+let activeLoads = 0;
+const loadQueue: Array<() => void> = [];
+
+async function withLoadSlot<T>(work: () => Promise<T>): Promise<T> {
+  if (activeLoads >= MAX_CONCURRENT_LOADS) {
+    await new Promise<void>((resolve) => loadQueue.push(resolve));
+  }
+  activeLoads += 1;
+  try {
+    return await work();
+  } finally {
+    activeLoads -= 1;
+    loadQueue.shift()?.();
+  }
+}
+
+/** Stored-on-server photos have a share-sized copy on the API; others (e.g. Supabase) don't. */
+function serverShareCopyUrl(url: string): string | null {
+  const match = /^\/uploads\/products\/([^/?#]+)/.exec(url);
+  return match ? apiUrl(`/catalogue/share-photo/${encodeURIComponent(match[1])}`) : null;
+}
+
+async function fetchAuthenticated(url: string): Promise<Response> {
+  const get = () => {
+    const token = getAccessToken();
+    return fetch(url, {
+      credentials: "include",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+  };
+  let response = await get();
+  if (response.status === 401 && (await refreshSession())) response = await get();
+  return response;
+}
+
+async function fetchShareSource(photo: ShareablePhoto): Promise<Blob> {
+  const copyUrl = serverShareCopyUrl(photo.url);
+  if (copyUrl) {
+    const response = await fetchAuthenticated(copyUrl).catch(() => null);
+    if (response?.ok) return response.blob();
+  }
+  // No server copy (older API, or a photo stored elsewhere) — use the original.
   const response = await fetch(resolveMediaUrl(photo.url));
   if (!response.ok) throw new Error(`Could not load ${photo.filename}`);
-  const blob = await response.blob();
-  return new File([blob], photo.filename, { type: blob.type || "image/jpeg" });
+  return response.blob();
+}
+
+/** Re-encodes any image as a JPEG of at most ~1280 px, decoding at reduced size to spare memory. */
+async function compressToJpeg(blob: Blob): Promise<Blob> {
+  const decode = (options: ImageBitmapOptions) =>
+    createImageBitmap(blob, { imageOrientation: "from-image", resizeQuality: "high", ...options });
+
+  let bitmap = await decode({ resizeWidth: SHARE_MAX_EDGE_PX });
+  if (bitmap.height > SHARE_MAX_EDGE_PX * 1.25) {
+    bitmap.close(); // portrait photo — cap the height instead
+    bitmap = await decode({ resizeHeight: SHARE_MAX_EDGE_PX });
+  }
+
+  const canvas = document.createElement("canvas");
+  canvas.width = bitmap.width;
+  canvas.height = bitmap.height;
+  const context = canvas.getContext("2d")!;
+  context.fillStyle = "#ffffff"; // transparent PNGs → white, not black
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.drawImage(bitmap, 0, 0);
+  bitmap.close();
+
+  const jpeg = await new Promise<Blob | null>((resolve) =>
+    canvas.toBlob(resolve, "image/jpeg", SHARE_JPEG_QUALITY),
+  );
+  canvas.width = canvas.height = 0; // release canvas memory
+  if (!jpeg) throw new Error("Could not compress photo");
+  return jpeg;
+}
+
+function jpegName(filename: string): string {
+  return `${filename.replace(/\.[^.]+$/, "")}.jpg`;
+}
+
+async function fetchShareFile(photo: ShareablePhoto): Promise<File> {
+  return withLoadSlot(async () => {
+    const source = await fetchShareSource(photo);
+    let jpeg = source;
+    if (source.type !== "image/jpeg" || source.size > SMALL_ENOUGH_BYTES) {
+      jpeg = await compressToJpeg(source).catch(() => source);
+    }
+    return new File([jpeg], jpegName(photo.filename), { type: "image/jpeg" });
+  });
 }
 
 function loadFile(photo: ShareablePhoto): Promise<File> {
   const key = cacheKey(photo);
   let pending = fileCache.get(key);
   if (!pending) {
-    pending = fetchFile(photo).then(
+    pending = fetchShareFile(photo).then(
       (file) => {
         readyFiles.set(key, file);
         return file;
@@ -143,17 +240,20 @@ function saveBlob(blob: Blob, filename: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
-/** Saves one photo to the device without navigating away from the app. */
+/** Saves one photo, full quality, to the device without navigating away from the app. */
 export async function downloadPhoto(photo: ShareablePhoto): Promise<void> {
-  const file = await loadFile(photo);
-  saveBlob(file, photo.filename);
+  const response = await fetch(resolveMediaUrl(photo.url));
+  if (!response.ok) throw new Error(`Could not load ${photo.filename}`);
+  saveBlob(await response.blob(), photo.filename);
 }
 
 type ShareOutcome = "shared" | "cancelled" | "needs-tap";
 
-async function shareFiles(files: File[], title: string): Promise<ShareOutcome> {
+async function shareFiles(files: File[]): Promise<ShareOutcome> {
   try {
-    await navigator.share({ files, title });
+    // Files only: adding a title/text makes some apps (e.g. Instagram) drop
+    // out of the share sheet, or send the text instead of the photos.
+    await navigator.share({ files });
     return "shared";
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") return "cancelled";
@@ -195,8 +295,24 @@ async function shareBatch(
   // While the share sheet is open, fetch the next batch so "Share next" is instant.
   if (index + 1 < batches.length) prefetchBatch(batches[index + 1]);
 
-  const outcome = await shareFiles(files, title);
-  if (outcome === "cancelled") return "cancelled";
+  const outcome = await shareFiles(files);
+  if (outcome === "cancelled") {
+    // Share sheet closed without sending — in a multi-batch share, keep the
+    // run going instead of losing the remaining photos.
+    if (batches.length > 1) {
+      const sent = batches.slice(0, index).reduce((sum, batch) => sum + batch.length, 0);
+      const total = batches.reduce((sum, batch) => sum + batch.length, 0);
+      offerTap(
+        `Not sent — ${sent} of ${total} photos shared so far`,
+        `Share these ${batches[index].length} again`,
+        batches,
+        index,
+        title,
+      );
+      return "pending";
+    }
+    return "cancelled";
+  }
   if (outcome === "needs-tap") {
     offerTap("Photos ready", "Share now", batches, index, title);
     return "pending";
@@ -214,6 +330,10 @@ async function shareBatch(
       title,
     );
     return "pending";
+  }
+  if (batches.length > 1) {
+    const total = batches.reduce((sum, batch) => sum + batch.length, 0);
+    toast.success(`All ${total} photos shared`);
   }
   return "shared";
 }
