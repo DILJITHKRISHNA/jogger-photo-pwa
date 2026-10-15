@@ -1,8 +1,10 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query, Res } from '@nestjs/common';
+import { SkipThrottle } from '@nestjs/throttler';
 import type { Response } from 'express';
 import { CatalogueService, type ZipItem } from './catalogue.service';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Role } from '../../generated/prisma/enums';
+import { sharePhotoJpeg } from '../../common/util/share-photo';
 
 /**
  * The executive-facing "read" API — every route here is available to any
@@ -13,6 +15,21 @@ import { Role } from '../../generated/prisma/enums';
 @Controller('catalogue')
 export class CatalogueController {
   constructor(private readonly catalogue: CatalogueService) {}
+
+  /**
+   * Share-sized JPEG of a stored photo (max 1280 px), used by the share
+   * button so even full-size camera originals share quickly and within the
+   * browser's share limits. Not rate-limited: one share batch fetches up to
+   * 100 of these at once.
+   */
+  @Get('share-photo/:name')
+  @SkipThrottle()
+  async sharePhoto(@Param('name') name: string, @Res() res: Response) {
+    const jpeg = await sharePhotoJpeg(name);
+    res.setHeader('Content-Type', 'image/jpeg');
+    res.setHeader('Cache-Control', 'private, max-age=86400');
+    res.send(jpeg);
+  }
 
   @Get('search')
   search(@Query('article') article: string) {
