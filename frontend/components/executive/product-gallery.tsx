@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CheckSquare, Download, Loader2, Share2, Square, X } from "lucide-react";
+import { CheckSquare, Download, Link2, Loader2, Share2, Square, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import {
   sharePhotos,
   type ShareablePhoto,
 } from "@/lib/client/share";
+import { createShareLink, sendShareLink } from "@/lib/client/share-link";
 import { filenameFor } from "@/lib/client/photo-filename";
 import type { ProductView } from "@/lib/types";
 
@@ -32,7 +33,7 @@ export function ProductGallery({
 }) {
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [busy, setBusy] = useState<"share" | "download" | null>(null);
+  const [busy, setBusy] = useState<"share" | "download" | "link" | null>(null);
 
   const groups = useMemo(() => {
     if (!groupByCategory) return [{ label: null as string | null, items }];
@@ -101,6 +102,21 @@ export function ProductGallery({
     }
   }
 
+  async function handleShareLink() {
+    const productIds = items.filter((i) => selected.has(i.id)).map((i) => i.id);
+    if (productIds.length === 0) return;
+    setBusy("link");
+    try {
+      const { url, count } = await createShareLink(productIds);
+      const result = await sendShareLink(url, count);
+      if (result === "shared") toast.success("Link shared");
+    } catch {
+      toast.error("Couldn't create the link");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function handleDownload() {
     const photos = selectedPhotos();
     if (photos.length === 0) return;
@@ -153,7 +169,7 @@ export function ProductGallery({
         </div>
 
         {selectMode && selected.size > 0 && (
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button className="flex-1" size="sm" disabled={busy !== null} onClick={handleShare}>
               {busy === "share" ? <Loader2 className="animate-spin" /> : <Share2 />}
               Share {selected.size > ZIP_THRESHOLD ? "" : "Selected"}
@@ -167,6 +183,17 @@ export function ProductGallery({
             >
               {busy === "download" ? <Loader2 className="animate-spin" /> : <Download />}
               {selected.size > 1 ? "Download ZIP" : "Download"}
+            </Button>
+            {/* One link for any number of photos — Android shares only 10 photos at a time. */}
+            <Button
+              variant="secondary"
+              className="w-full"
+              size="sm"
+              disabled={busy !== null}
+              onClick={handleShareLink}
+            >
+              {busy === "link" ? <Loader2 className="animate-spin" /> : <Link2 />}
+              Share as link
             </Button>
           </div>
         )}
