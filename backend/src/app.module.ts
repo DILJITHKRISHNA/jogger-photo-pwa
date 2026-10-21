@@ -23,6 +23,7 @@ import { NewModelsModule } from './modules/new-models/new-models.module';
 import { MasterModule } from './modules/master/master.module';
 import { CatalogueModule } from './modules/catalogue/catalogue.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { ShareLinksModule } from './modules/share-links/share-links.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 
@@ -57,6 +58,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     MasterModule,
     CatalogueModule,
     DashboardModule,
+    ShareLinksModule,
   ],
   controllers: [AppController],
   providers: [

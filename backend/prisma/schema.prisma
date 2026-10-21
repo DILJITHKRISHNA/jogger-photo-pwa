@@ -45,7 +45,8 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  auditLogs AuditLog[]
+  auditLogs  AuditLog[]
+  shareLinks ShareLink[]
 
   @@map("users")
 }
@@ -208,4 +209,23 @@ model AuditLog {
   @@index([userId])
   @@index([entity, entityId])
   @@map("audit_logs")
+}
+
+/// A link an executive sends instead of the photos themselves, so one message
+/// carries any number of photos (Android's share sheet takes only 10 files at
+/// a time). Anyone holding the unguessable token can view the photos until
+/// the link expires.
+model ShareLink {
+  id          String   @id @default(cuid())
+  token       String   @unique
+  /// The shared products, in the order they were selected.
+  productIds  String[]
+  createdById String?
+  createdBy   User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  @@index([expiresAt])
+  @@map("share_links")
 }

@@ -28,6 +28,37 @@ async function withSlot<T>(work: () => Promise<T>): Promise<T> {
   }
 }
 
+/** Re-encodes any photo as a share-sized JPEG, cached under `cacheName` in the share cache. */
+async function cachedShareJpeg(
+  cacheName: string,
+  load: () => Promise<Buffer | string>,
+): Promise<Buffer> {
+  const cached = path.join(CACHE_DIR, `${cacheName}.jpg`);
+  const hit = await fs.readFile(cached).catch(() => null);
+  if (hit) return hit;
+
+  return withSlot(async () => {
+    const jpeg = await sharp(await load(), { failOn: 'none' })
+      .rotate() // apply the camera's EXIF orientation
+      .resize({
+        width: SHARE_MAX_EDGE_PX,
+        height: SHARE_MAX_EDGE_PX,
+        fit: 'inside',
+        withoutEnlargement: true,
+      })
+      .flatten({ background: '#ffffff' }) // transparent PNGs → white, not black
+      .jpeg({ quality: 80, mozjpeg: true })
+      .toBuffer();
+
+    await fs.mkdir(CACHE_DIR, { recursive: true });
+    // Write-then-rename so a half-written file is never served.
+    const tmp = `${cached}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
+    await fs.writeFile(tmp, jpeg);
+    await fs.rename(tmp, cached);
+    return jpeg;
+  });
+}
+
 /**
  * A share-sized JPEG copy of a stored product photo (max 1280 px, ~80%
  * quality — typically 150–300 KB). Generated on first request and cached
@@ -42,31 +73,35 @@ export async function sharePhotoJpeg(name: string): Promise<Buffer> {
   const stat = await fs.stat(source).catch(() => null);
   if (!stat?.isFile()) throw new NotFoundException('Photo not found');
 
-  const cached = path.join(
-    CACHE_DIR,
-    `${name.replace(/\.[^.]+$/, '')}.${Math.floor(stat.mtimeMs)}.jpg`,
+  return cachedShareJpeg(
+    `${name.replace(/\.[^.]+$/, '')}.${Math.floor(stat.mtimeMs)}`,
+    () => Promise.resolve(source),
   );
-  const hit = await fs.readFile(cached).catch(() => null);
-  if (hit) return hit;
+}
 
-  return withSlot(async () => {
-    const jpeg = await sharp(source, { failOn: 'none' })
-      .rotate() // apply the camera's EXIF orientation
-      .resize({
-        width: SHARE_MAX_EDGE_PX,
-        height: SHARE_MAX_EDGE_PX,
-        fit: 'inside',
-        withoutEnlargement: true,
-      })
-      .flatten({ background: '#ffffff' }) // transparent PNGs → white, not black
-      .jpeg({ quality: 80, mozjpeg: true })
-      .toBuffer();
+/**
+ * Share-sized JPEG for a product's photo wherever it is stored: a local
+ * `/uploads/products/…` file, or an absolute URL (e.g. Supabase Storage),
+ * which is downloaded once and cached under the product's id + last update.
+ */
+export async function productShareJpeg(product: {
+  id: string;
+  photoUrl: string;
+  updatedAt: Date;
+}): Promise<Buffer> {
+  const local = /^\/uploads\/products\/([^/?#]+)$/.exec(product.photoUrl);
+  if (local) return sharePhotoJpeg(decodeURIComponent(local[1]));
+  if (!/^https?:\/\//i.test(product.photoUrl))
+    throw new NotFoundException('Photo not found');
 
-    await fs.mkdir(CACHE_DIR, { recursive: true });
-    // Write-then-rename so a half-written file is never served.
-    const tmp = `${cached}.${process.pid}.tmp`;
-    await fs.writeFile(tmp, jpeg);
-    await fs.rename(tmp, cached);
-    return jpeg;
-  });
+  return cachedShareJpeg(
+    `remote-${product.id}.${product.updatedAt.getTime()}`,
+    async () => {
+      const response = await fetch(product.photoUrl, {
+        signal: AbortSignal.timeout(30_000),
+      }).catch(() => null);
+      if (!response?.ok) throw new NotFoundException('Photo not found');
+      return Buffer.from(await response.arrayBuffer());
+    },
+  );
 }
