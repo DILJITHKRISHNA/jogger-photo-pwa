@@ -1,12 +1,24 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useParams } from "next/navigation";
-import { ChevronLeft, ChevronRight, Download, ImageOff, Loader2, X } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Download, ImageOff, Loader2, X } from "lucide-react";
+import { toast } from "sonner";
 
 import { BrandMark } from "@/components/brand-mark";
 import { buttonVariants } from "@/components/ui/button";
 import { apiUrl } from "@/lib/api-client";
+import {
+  IOS_BATCH_SIZE,
+  downloadPhotos,
+  filesIfReady,
+  loadPhotoFile,
+  prefetchPhotoFiles,
+  releasePhotoFiles,
+  savesViaShareSheet,
+  shareFilesToSave,
+  type SavablePhoto,
+} from "@/lib/client/save-photos";
 import { cn } from "@/lib/utils";
 
 interface SharedPhoto {
@@ -25,6 +37,16 @@ type LoadState =
   | { status: "ready"; link: SharedLink }
   | { status: "error"; message: string };
 
+const noSubscribe = () => () => {};
+
+type SaveState =
+  | { kind: "idle" }
+  | { kind: "preparing" }
+  /** iPhone: batch `batch` is loaded and waits for a tap to open the share sheet. */
+  | { kind: "ready"; batch: number }
+  | { kind: "downloading"; done: number }
+  | { kind: "done" };
+
 /*
  * The public page behind a "Share as link" link — what the customer sees.
  * No sign-in; it only ever shows the photos that were shared (article +
@@ -34,6 +56,9 @@ export default function SharedPhotosPage() {
   const { token } = useParams<{ token: string }>();
   const [state, setState] = useState<LoadState>({ status: "loading" });
   const [open, setOpen] = useState<number | null>(null);
+  const [save, setSave] = useState<SaveState>({ kind: "idle" });
+  // Depends on the phone, which the server can't know — false while server-rendering.
+  const viaShareSheet = useSyncExternalStore(noSubscribe, savesViaShareSheet, () => false);
 
   useEffect(() => {
     let cancelled = false;
@@ -62,7 +87,104 @@ export default function SharedPhotosPage() {
   const photoUrl = (photo: SharedPhoto, download = false) =>
     apiUrl(`/share-links/${encodeURIComponent(token)}/photos/${photo.id}${download ? "?download=1" : ""}`);
 
-  const photos = state.status === "ready" ? state.link.photos : [];
+  const photos = useMemo(() => (state.status === "ready" ? state.link.photos : []), [state]);
+  const savable = useMemo<SavablePhoto[]>(
+    () => photos.map((photo) => ({ url: photoUrl(photo), filename: `${photo.article} ${photo.colour}.jpg` })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- photoUrl only depends on token
+    [photos, token],
+  );
+  const batches = useMemo(() => {
+    const result: SavablePhoto[][] = [];
+    for (let i = 0; i < savable.length; i += IOS_BATCH_SIZE) result.push(savable.slice(i, i + IOS_BATCH_SIZE));
+    return result;
+  }, [savable]);
+
+  // iPhone: load the first batch up front, so "Save all" opens the share sheet straight from the tap.
+  useEffect(() => {
+    if (viaShareSheet && batches.length > 0) prefetchPhotoFiles(batches[0]);
+  }, [viaShareSheet, batches]);
+
+  async function saveBatch(index: number) {
+    const batch = batches[index];
+    const files = filesIfReady(batch);
+    if (!files) {
+      // Still loading — the share sheet only opens straight from a tap, so
+      // finish loading, then ask for one more tap.
+      setSave({ kind: "preparing" });
+      try {
+        await Promise.all(batch.map(loadPhotoFile));
+        setSave({ kind: "ready", batch: index });
+        toast("Photos ready — tap Save again");
+      } catch {
+        setSave({ kind: "idle" });
+        toast.error("Couldn't load the photos. Check your connection and try again.");
+      }
+      return;
+    }
+
+    if (index + 1 < batches.length) prefetchPhotoFiles(batches[index + 1]);
+    const outcome = await shareFilesToSave(files).catch(() => "failed" as const);
+    if (outcome === "failed") {
+      toast.error("Couldn't open the save options");
+      return;
+    }
+    if (outcome !== "saved") {
+      // Closed without saving (or the tap expired) — the same batch stays ready for the next tap.
+      setSave(index === 0 && outcome === "cancelled" ? { kind: "idle" } : { kind: "ready", batch: index });
+      return;
+    }
+
+    releasePhotoFiles(batch);
+    if (index + 1 < batches.length) {
+      setSave({ kind: "ready", batch: index + 1 });
+      const savedSoFar = Math.min((index + 1) * IOS_BATCH_SIZE, savable.length);
+      toast.success(`${savedSoFar} of ${savable.length} done — tap "Save next" for the rest`);
+    } else {
+      setSave({ kind: "done" });
+    }
+  }
+
+  async function handleSaveAll() {
+    if (save.kind === "preparing" || save.kind === "downloading") return;
+    if (viaShareSheet) return saveBatch(save.kind === "ready" ? save.batch : 0);
+
+    setSave({ kind: "downloading", done: 0 });
+    const saved = await downloadPhotos(savable, (done) => setSave({ kind: "downloading", done }));
+    setSave({ kind: "done" });
+    if (saved === savable.length) {
+      toast.success(`${saved} photo${saved === 1 ? "" : "s"} saved — find them in your Gallery, in the Download album`);
+    } else {
+      toast.error(`${savable.length - saved} of ${savable.length} photos couldn't be saved — tap Save all to try again`);
+    }
+  }
+
+  /** The viewer's "Save photo" on iPhone: share sheet → "Save Image" puts it in Photos. */
+  async function saveOneViaShareSheet(photo: SavablePhoto) {
+    const files = filesIfReady([photo]);
+    if (!files) {
+      prefetchPhotoFiles([photo]);
+      toast("Getting the photo ready — tap Save photo again");
+      return;
+    }
+    const outcome = await shareFilesToSave(files).catch(() => "cancelled" as const);
+    if (outcome === "needs-tap") toast("Tap Save photo again");
+  }
+
+  const saveLabel = (() => {
+    switch (save.kind) {
+      case "preparing":
+        return "Preparing…";
+      case "downloading":
+        return `Saving ${save.done}/${savable.length}`;
+      case "done":
+        return "Saved";
+      case "ready":
+        if (save.batch > 0) return `Save next ${batches[save.batch].length}`;
+        return batches.length > 1 ? `Save 1–${batches[0].length}` : "Save all";
+      default:
+        return batches.length > 1 && viaShareSheet ? `Save 1–${batches[0].length}` : "Save all";
+    }
+  })();
 
   return (
     <div className="flex min-h-dvh flex-col bg-background">
@@ -79,14 +201,21 @@ export default function SharedPhotosPage() {
             )}
           </div>
           {photos.length > 1 && (
-            // A cross-origin link can't use `download`, but the API sends the
-            // ZIP as an attachment, so it saves instead of navigating away.
-            <a
-              href={apiUrl(`/share-links/${encodeURIComponent(token)}/zip`)}
-              className={buttonVariants({ size: "sm" })}
+            <button
+              type="button"
+              onClick={handleSaveAll}
+              disabled={save.kind === "preparing" || save.kind === "downloading"}
+              className={cn(buttonVariants({ size: "sm" }), "tabular-nums")}
             >
-              <Download /> Save all
-            </a>
+              {save.kind === "preparing" || save.kind === "downloading" ? (
+                <Loader2 className="animate-spin" />
+              ) : save.kind === "done" ? (
+                <Check />
+              ) : (
+                <Download />
+              )}
+              {saveLabel}
+            </button>
           )}
         </div>
       </header>
@@ -110,7 +239,15 @@ export default function SharedPhotosPage() {
 
         {photos.length > 0 && (
           <>
-            <p className="mb-3 text-xs text-muted-foreground">Tap a photo to see it bigger and save it.</p>
+            <p className="mb-3 text-xs text-muted-foreground">
+              {photos.length === 1
+                ? "Tap the photo to see it bigger and save it."
+                : viaShareSheet
+                  ? `Tap the Save button, then "Save Images" to add them to your Photos${
+                      batches.length > 1 ? ` (${IOS_BATCH_SIZE} at a time)` : ""
+                    }. Or tap a photo to see it bigger.`
+                  : 'Tap "Save all" to save every photo to your gallery, or tap a photo to see it bigger.'}
+            </p>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
               {photos.map((photo, index) => (
                 <button
@@ -137,9 +274,11 @@ export default function SharedPhotosPage() {
           position={`${open + 1} / ${photos.length}`}
           src={photoUrl(photos[open])}
           downloadHref={photoUrl(photos[open], true)}
+          onSave={viaShareSheet ? () => void saveOneViaShareSheet(savable[open]) : undefined}
           onPrev={open > 0 ? () => setOpen(open - 1) : undefined}
           onNext={open < photos.length - 1 ? () => setOpen(open + 1) : undefined}
           onClose={() => setOpen(null)}
+          onShow={viaShareSheet ? () => prefetchPhotoFiles([savable[open]]) : undefined}
         />
       )}
     </div>
@@ -177,6 +316,8 @@ function Viewer({
   onPrev,
   onNext,
   onClose,
+  onSave,
+  onShow,
 }: {
   photo: SharedPhoto;
   position: string;
@@ -185,7 +326,16 @@ function Viewer({
   onPrev?: () => void;
   onNext?: () => void;
   onClose: () => void;
+  /** Replaces the plain download (iPhone: save through the share sheet). */
+  onSave?: () => void;
+  /** Called when a photo is shown — lets iPhone preload it for an instant save. */
+  onShow?: () => void;
 }) {
+  useEffect(() => {
+    onShow?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per photo
+  }, [src]);
+
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
       if (event.key === "Escape") onClose();
@@ -221,7 +371,18 @@ function Viewer({
         <button type="button" onClick={onPrev} disabled={!onPrev} className={navButton} aria-label="Previous photo">
           <ChevronLeft className="size-5" />
         </button>
-        <a href={downloadHref} className={cn(buttonVariants(), "flex-1")}>
+        <a
+          href={downloadHref}
+          onClick={
+            onSave
+              ? (event) => {
+                  event.preventDefault();
+                  onSave();
+                }
+              : undefined
+          }
+          className={cn(buttonVariants(), "flex-1")}
+        >
           <Download /> Save photo
         </a>
         <button type="button" onClick={onNext} disabled={!onNext} className={navButton} aria-label="Next photo">
