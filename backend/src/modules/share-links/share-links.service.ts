@@ -105,7 +105,7 @@ export class ShareLinksService {
   }
 }
 
-/** "JM1267 BRWN.jpg" — safe as a download / ZIP entry name. */
+/** "JM1267 BRWN.jpg" — safe as a download filename. */
 export function sharedPhotoFilename(
   product: Pick<Product, 'article' | 'colour'>,
 ): string {

@@ -1,6 +1,5 @@
 import { Body, Controller, Get, Param, Post, Query, Res } from '@nestjs/common';
 import { SkipThrottle } from '@nestjs/throttler';
-import archiver from 'archiver';
 import type { Response } from 'express';
 import { ShareLinksService, sharedPhotoFilename } from './share-links.service';
 import { CreateShareLinkDto } from './dto/create-share-link.dto';
@@ -80,51 +79,5 @@ export class ShareLinksController {
         attachment(sharedPhotoFilename(product)),
       );
     res.send(jpeg);
-  }
-
-  /** Every photo of the link as one ZIP, streamed so hundreds of photos never sit in memory. */
-  @Get(':token/zip')
-  @Public()
-  @SkipThrottle()
-  async zip(@Param('token') token: string, @Res() res: Response) {
-    const link = await this.shareLinks.findActive(token);
-    const products = await this.shareLinks.products(link);
-
-    res.setHeader('Content-Type', 'application/zip');
-    res.setHeader(
-      'Content-Disposition',
-      attachment('Jogger Footwear photos.zip'),
-    );
-
-    // Photos are already JPEG-compressed — storing them as-is is faster and no bigger.
-    const archive = archiver('zip', { store: true });
-    archive.on('error', () => res.destroy());
-    archive.pipe(res);
-
-    // Resize a few photos ahead while earlier ones are being written out.
-    const AHEAD = 4;
-    const pending = products.map(() => null as Promise<Buffer | null> | null);
-    const start = (i: number) => {
-      if (i < products.length && !pending[i]) {
-        pending[i] = productShareJpeg(products[i]).catch(() => null);
-      }
-    };
-    for (let i = 0; i < products.length; i++) {
-      for (let j = i; j < i + AHEAD; j++) start(j);
-      const jpeg = await pending[i];
-      pending[i] = null;
-      if (jpeg) {
-        // Wait until this photo is written out before queueing more, so a slow
-        // download never piles hundreds of photos up in memory.
-        const written = new Promise<void>((resolve) => {
-          archive.once('entry', () => resolve());
-          res.once('close', () => resolve());
-        });
-        archive.append(jpeg, { name: sharedPhotoFilename(products[i]) });
-        await written;
-      }
-      if (res.destroyed) return archive.abort(); // customer cancelled the download
-    }
-    await archive.finalize();
   }
 }
