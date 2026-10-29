@@ -1,22 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { CheckSquare, Download, Link2, Loader2, Share2, Square, X } from "lucide-react";
-import { toast } from "sonner";
+import { useMemo, useState } from "react";
 
-import { Button } from "@/components/ui/button";
 import { PhotoCard } from "@/components/executive/photo-card";
-import {
-  downloadPhotos,
-  prefetchPhotos,
-  sharePhotos,
-  type ShareablePhoto,
-} from "@/lib/client/share";
-import { createShareLink, sendShareLink } from "@/lib/client/share-link";
-import { filenameFor } from "@/lib/client/photo-filename";
+import { SelectionToolbar } from "@/components/executive/selection-toolbar";
 import type { ProductView } from "@/lib/types";
-
-const ZIP_THRESHOLD = 8; // beyond this, prefer a single ZIP over many share/download prompts
 
 export function ProductGallery({
   items,
@@ -33,7 +21,6 @@ export function ProductGallery({
 }) {
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [busy, setBusy] = useState<"share" | "download" | "link" | null>(null);
 
   const groups = useMemo(() => {
     if (!groupByCategory) return [{ label: null as string | null, items }];
@@ -58,79 +45,6 @@ export function ProductGallery({
     });
   }
 
-  function selectAll() {
-    setSelected(new Set(items.map((i) => i.id)));
-  }
-
-  function clearSelection() {
-    setSelected(new Set());
-  }
-
-  function exitSelectMode() {
-    setSelectMode(false);
-    setSelected(new Set());
-  }
-
-  function selectedPhotos(): ShareablePhoto[] {
-    return items
-      .filter((i) => selected.has(i.id))
-      .map((i) => ({ url: i.photoUrl, filename: filenameFor(i) }));
-  }
-
-  // Fetch selected photos in the background so Share opens the share sheet
-  // straight from the tap, however many are selected.
-  useEffect(() => {
-    prefetchPhotos(
-      items
-        .filter((i) => selected.has(i.id))
-        .map((i) => ({ url: i.photoUrl, filename: filenameFor(i) })),
-    );
-  }, [items, selected]);
-
-  async function handleShare() {
-    const photos = selectedPhotos();
-    if (photos.length === 0) return;
-    setBusy("share");
-    try {
-      const result = await sharePhotos(photos, "Jogger Footwear");
-      if (result === "shared") toast.success("Shared");
-      else if (result === "downloaded") toast.success("Sharing isn't supported here — saved to your downloads");
-    } catch {
-      toast.error("Couldn't share those photos");
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function handleShareLink() {
-    const productIds = items.filter((i) => selected.has(i.id)).map((i) => i.id);
-    if (productIds.length === 0) return;
-    setBusy("link");
-    try {
-      const { url, count } = await createShareLink(productIds);
-      const result = await sendShareLink(url, count);
-      if (result === "shared") toast.success("Link shared");
-    } catch {
-      toast.error("Couldn't create the link");
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function handleDownload() {
-    const photos = selectedPhotos();
-    if (photos.length === 0) return;
-    setBusy("download");
-    try {
-      await downloadPhotos(photos, zipName);
-      if (photos.length > 1) toast.success(`Downloaded ${photos.length} photos as a ZIP`);
-    } catch {
-      toast.error("Download failed");
-    } finally {
-      setBusy(null);
-    }
-  }
-
   if (items.length === 0) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-1 px-8 py-16 text-center">
@@ -142,62 +56,15 @@ export function ProductGallery({
 
   return (
     <div className="flex flex-col">
-      <div className="sticky top-14 z-20 flex flex-col gap-2 border-b border-border bg-background/95 px-4 py-2.5 backdrop-blur">
-        <div className="flex items-center justify-between">
-          <p className="text-xs font-semibold text-muted-foreground">
-            {selectMode
-              ? `${selected.size} selected`
-              : `${items.length} photo${items.length === 1 ? "" : "s"}`}
-          </p>
-          {selectMode ? (
-            <div className="flex items-center gap-1">
-              <Button variant="ghost" size="sm" onClick={selectAll}>
-                <CheckSquare /> All
-              </Button>
-              <Button variant="ghost" size="sm" onClick={clearSelection}>
-                <Square /> None
-              </Button>
-              <Button variant="ghost" size="icon-sm" onClick={exitSelectMode} aria-label="Cancel">
-                <X />
-              </Button>
-            </div>
-          ) : (
-            <Button variant="secondary" size="sm" onClick={() => setSelectMode(true)}>
-              <CheckSquare /> Select
-            </Button>
-          )}
-        </div>
-
-        {selectMode && selected.size > 0 && (
-          <div className="flex flex-wrap gap-2">
-            <Button className="flex-1" size="sm" disabled={busy !== null} onClick={handleShare}>
-              {busy === "share" ? <Loader2 className="animate-spin" /> : <Share2 />}
-              Share {selected.size > ZIP_THRESHOLD ? "" : "Selected"}
-            </Button>
-            <Button
-              variant="outline"
-              className="flex-1"
-              size="sm"
-              disabled={busy !== null}
-              onClick={handleDownload}
-            >
-              {busy === "download" ? <Loader2 className="animate-spin" /> : <Download />}
-              {selected.size > 1 ? "Download ZIP" : "Download"}
-            </Button>
-            {/* One link for any number of photos — Android shares only 10 photos at a time. */}
-            <Button
-              variant="secondary"
-              className="w-full"
-              size="sm"
-              disabled={busy !== null}
-              onClick={handleShareLink}
-            >
-              {busy === "link" ? <Loader2 className="animate-spin" /> : <Link2 />}
-              Share as link
-            </Button>
-          </div>
-        )}
-      </div>
+      <SelectionToolbar
+        items={items}
+        selectMode={selectMode}
+        onSelectModeChange={setSelectMode}
+        selected={selected}
+        onSelectedChange={setSelected}
+        zipName={zipName}
+        className="sticky top-14 z-20 border-b border-border bg-background/95 px-4 py-2.5 backdrop-blur"
+      />
 
       <div className="flex flex-col gap-5 px-4 py-4">
         {groups.map((group) => (
