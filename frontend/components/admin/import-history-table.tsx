@@ -24,6 +24,7 @@ const TYPE_LABEL: Record<ImportType, string> = {
   STOCK: "Stock Excel",
   SCHEME: "Scheme Excel",
   NEW_MODEL: "New Model Excel",
+  REQUESTED: "Requested Photos Excel",
   PHOTOS: "Photo upload",
   MASTER: "Master Excel",
 };
@@ -35,6 +36,7 @@ const FILTERS: Array<{ value: ImportType | "all"; label: string }> = [
   { value: "STOCK", label: "Stock" },
   { value: "SCHEME", label: "Scheme" },
   { value: "NEW_MODEL", label: "New Model" },
+  { value: "REQUESTED", label: "Requested" },
 ];
 
 export function ImportHistoryTable() {

@@ -7,6 +7,7 @@ import {
   PackageCheck,
   Tag,
   Sparkles,
+  ClipboardList,
   FolderTree,
   AlertTriangle,
   History,
@@ -26,6 +27,7 @@ const IMPORT_TYPE_LABEL: Record<ImportType, string> = {
   STOCK: "Stock Excel",
   SCHEME: "Scheme Excel",
   NEW_MODEL: "New Model Excel",
+  REQUESTED: "Requested Photos Excel",
   PHOTOS: "Photo upload",
   MASTER: "Master Excel",
 };
@@ -96,6 +98,13 @@ export default function AdminDashboardPage() {
             </div>
 
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              <StatCard
+                label="Requested Photos"
+                value={stats.requestedCount}
+                icon={ClipboardList}
+                accent="bg-teal-500/10 text-teal-600 dark:text-teal-400"
+                hint={`Updated ${formatRelativeTime(stats.lastRequestedUpload)}`}
+              />
               <StatCard
                 label="Categories"
                 value={stats.categoriesCount}

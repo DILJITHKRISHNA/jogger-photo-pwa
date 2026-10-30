@@ -75,7 +75,7 @@ export interface NewModelEntry {
   addedAt: string;
 }
 
-export type ImportType = "STOCK" | "SCHEME" | "NEW_MODEL" | "PHOTOS" | "MASTER";
+export type ImportType = "STOCK" | "SCHEME" | "NEW_MODEL" | "REQUESTED" | "PHOTOS" | "MASTER";
 
 export interface ImportErrorRow {
   row: number;
@@ -103,11 +103,13 @@ export interface DashboardStats {
   stockArticleCount: number;
   schemeCount: number;
   newModelCount: number;
+  requestedCount: number;
   missingStockPhotoCount: number;
   lastPhotoUpdate: string | null;
   lastStockUpload: string | null;
   lastSchemeUpload: string | null;
   lastNewModelUpload: string | null;
+  lastRequestedUpload: string | null;
   recentImportErrorCount: number;
 }
 
@@ -120,6 +122,7 @@ export interface CheckResult {
   inStock: boolean;
   inScheme: boolean;
   isNewModel: boolean;
+  isRequested: boolean;
 }
 
 /** A Brand or Gender box entry, with how many active photos it holds. */

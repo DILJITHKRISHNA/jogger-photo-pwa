@@ -30,12 +30,13 @@ import { apiFetch, ApiError, downloadAuthenticated } from "@/lib/api-client";
 import { formatRelativeTime } from "@/lib/format";
 import type { ImportRecord, ImportType } from "@/lib/types";
 
-export type ExcelKind = "stock" | "scheme" | "new-model" | "master";
+export type ExcelKind = "stock" | "scheme" | "new-model" | "requested" | "master";
 
 const ENDPOINT: Record<ExcelKind, string> = {
   stock: "/stock",
   scheme: "/scheme",
   "new-model": "/new-models",
+  requested: "/requested-photos",
   master: "/master",
 };
 
@@ -43,6 +44,7 @@ const RECORD_TYPE: Record<ExcelKind, ImportType> = {
   stock: "STOCK",
   scheme: "SCHEME",
   "new-model": "NEW_MODEL",
+  requested: "REQUESTED",
   master: "MASTER",
 };
 
@@ -64,6 +66,10 @@ const DELETE_INFO: Record<ExcelKind, { label: string; effect: string }> = {
     label: "New Model list",
     effect: "All New Model uploads and their history are removed. New Model is empty for executives until you upload a new New Model Excel.",
   },
+  requested: {
+    label: "Requested Photos list",
+    effect: "All Requested Photos uploads and their history are removed. Requested Photos is empty for executives until you upload a new Requested Photos Excel.",
+  },
 };
 
 const DELETE_ONE_EFFECT: Record<ExcelKind, string> = {
@@ -75,6 +81,8 @@ const DELETE_ONE_EFFECT: Record<ExcelKind, string> = {
     "Articles that only this upload added are removed from Scheme Articles. Articles another upload also listed stay.",
   "new-model":
     "Articles that only this upload added are removed from New Model. Articles another upload also listed stay.",
+  requested:
+    "Articles that only this upload added are removed from Requested Photos. Articles another upload also listed stay.",
 };
 
 export function ExcelUploadPanel({

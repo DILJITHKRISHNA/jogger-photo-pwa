@@ -114,6 +114,7 @@ export function CheckPanel() {
             <StatusRow label="In today's stock" ok={result.inStock} />
             <StatusRow label="Scheme article" ok={result.inScheme} />
             <StatusRow label="New model" ok={result.isNewModel} />
+            <StatusRow label="Requested photo" ok={result.isRequested} />
           </div>
         </div>
       )}

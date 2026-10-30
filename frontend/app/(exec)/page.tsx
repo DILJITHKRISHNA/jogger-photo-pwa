@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Images, PackageCheck, Tag, Sparkles, Store, Users, ChevronRight } from "lucide-react";
+import { Images, PackageCheck, Tag, Sparkles, ClipboardList, Store, Users, ChevronRight } from "lucide-react";
 
 import { AppHeader } from "@/components/executive/app-header";
 import { HomeSearchBar } from "@/components/executive/home-search-bar";
@@ -17,6 +17,7 @@ export default function HomePage() {
   const { items: stockItems } = useStockGallery();
   const { items: schemeItems } = useGallery("/catalogue/scheme");
   const { items: newModelItems } = useGallery("/catalogue/new-models");
+  const { items: requestedItems } = useGallery("/catalogue/requested");
   const { groups: brands } = useGroups("brands");
   const { groups: genders } = useGroups("genders");
 
@@ -48,6 +49,13 @@ export default function HomePage() {
       subtitle: `${newModelItems.length} article${newModelItems.length === 1 ? "" : "s"}`,
       icon: Sparkles,
       accent: "bg-amber-500/10 text-amber-600 dark:text-amber-500",
+    },
+    {
+      href: "/requested",
+      label: "Requested Photos",
+      subtitle: `${requestedItems.length} article${requestedItems.length === 1 ? "" : "s"}`,
+      icon: ClipboardList,
+      accent: "bg-teal-500/10 text-teal-600 dark:text-teal-400",
     },
     {
       href: "/gender",
