@@ -23,6 +23,7 @@ enum ImportType {
   STOCK
   SCHEME
   NEW_MODEL
+  REQUESTED
   PHOTOS
   MASTER
 }
@@ -173,6 +174,17 @@ model NewModelEntry {
 
   @@unique([article, colour])
   @@map("new_model_entries")
+}
+
+/// Requested Photos articles — merged (add/update) on each upload, like New Model.
+model RequestedEntry {
+  id      String   @id @default(cuid())
+  article String
+  colour  String
+  addedAt DateTime @default(now())
+
+  @@unique([article, colour])
+  @@map("requested_entries")
 }
 
 model ImportRecord {

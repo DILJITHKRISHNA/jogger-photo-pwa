@@ -8,11 +8,13 @@ export interface DashboardStats {
   stockArticleCount: number;
   schemeCount: number;
   newModelCount: number;
+  requestedCount: number;
   missingStockPhotoCount: number;
   lastPhotoUpdate: string | null;
   lastStockUpload: string | null;
   lastSchemeUpload: string | null;
   lastNewModelUpload: string | null;
+  lastRequestedUpload: string | null;
   recentImportErrorCount: number;
 }
 
@@ -27,10 +29,12 @@ export class DashboardService {
       stock,
       schemeCount,
       newModelCount,
+      requestedCount,
       latestPhoto,
       latestStock,
       latestScheme,
       latestNewModel,
+      latestRequested,
       recentImports,
     ] = await Promise.all([
       this.prisma.product.findMany({ where: { active: true }, select: { article: true } }),
@@ -38,6 +42,7 @@ export class DashboardService {
       this.prisma.stockEntry.findMany({ select: { article: true, colour: true } }),
       this.prisma.schemeEntry.count(),
       this.prisma.newModelEntry.count(),
+      this.prisma.requestedEntry.count(),
       this.prisma.product.findFirst({ orderBy: { updatedAt: 'desc' }, select: { updatedAt: true } }),
       this.prisma.stockEntry.findFirst({ orderBy: { stockDate: 'desc' }, select: { stockDate: true } }),
       this.prisma.importRecord.findFirst({
@@ -47,6 +52,11 @@ export class DashboardService {
       }),
       this.prisma.importRecord.findFirst({
         where: { type: 'NEW_MODEL' },
+        orderBy: { uploadedAt: 'desc' },
+        select: { uploadedAt: true },
+      }),
+      this.prisma.importRecord.findFirst({
+        where: { type: 'REQUESTED' },
         orderBy: { uploadedAt: 'desc' },
         select: { uploadedAt: true },
       }),
@@ -75,11 +85,13 @@ export class DashboardService {
       stockArticleCount: stock.length,
       schemeCount,
       newModelCount,
+      requestedCount,
       missingStockPhotoCount,
       lastPhotoUpdate: latestPhoto?.updatedAt.toISOString() ?? null,
       lastStockUpload: latestStock?.stockDate.toISOString() ?? null,
       lastSchemeUpload: latestScheme?.uploadedAt.toISOString() ?? null,
       lastNewModelUpload: latestNewModel?.uploadedAt.toISOString() ?? null,
+      lastRequestedUpload: latestRequested?.uploadedAt.toISOString() ?? null,
       recentImportErrorCount: recentImports.reduce((sum, i) => sum + i.errorCount, 0),
     };
   }

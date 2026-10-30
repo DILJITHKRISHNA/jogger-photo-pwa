@@ -7,7 +7,7 @@ import { slugify } from '../categories/categories.service';
 import { parseSizes, uniqueSizes } from '../../common/util/sizes';
 import type { ImportRecord } from '../../generated/prisma/client';
 
-export type ImportKind = 'stock' | 'scheme' | 'new-model' | 'master';
+export type ImportKind = 'stock' | 'scheme' | 'new-model' | 'requested' | 'master';
 
 export interface ImportOutcome {
   fatal?: string;
@@ -28,11 +28,12 @@ const TYPE_MAP = {
   stock: 'STOCK',
   scheme: 'SCHEME',
   'new-model': 'NEW_MODEL',
+  requested: 'REQUESTED',
   master: 'MASTER',
 } as const;
 
 /**
- * Shared Excel import pipeline for Stock / Scheme / New Model / Master
+ * Shared Excel import pipeline for Stock / Scheme / New Model / Requested / Master
  * uploads: validate → import/update the matching table → cross-check
  * against the photo catalogue → record the result for Import History.
  */
@@ -108,9 +109,11 @@ export class ImportRunnerService {
         ),
       );
     } else {
+      // New Model / Requested Photos: plain Article + Colour lists, merged.
+      const delegate = kind === 'requested' ? this.prisma.requestedEntry : this.prisma.newModelEntry;
       await this.prisma.$transaction(
         rows.map((r) =>
-          this.prisma.newModelEntry.upsert({
+          (delegate as typeof this.prisma.newModelEntry).upsert({
             where: { article_colour: { article: r.article, colour: r.colour } },
             create: { article: r.article, colour: r.colour },
             update: {},
@@ -153,7 +156,7 @@ export class ImportRunnerService {
    * Delete one upload. Removes its history entry and the data it contributed:
    *  - Stock / Master replace the whole list on upload, so deleting the live
    *    (latest) upload rolls back to the previous upload, or clears the list.
-   *  - Scheme / New Model merge, so only rows no other upload also listed go.
+   *  - Scheme / New Model / Requested merge, so only rows no other upload also listed go.
    * Uploads made before rows were tracked can't be rolled back automatically.
    */
   async deleteImport(id: string) {
@@ -202,7 +205,7 @@ export class ImportRunnerService {
       return { dataRemoved: true, tracked: true, rolledBackTo: previousRows ? previous?.filename : null };
     }
 
-    // SCHEME / NEW_MODEL — merged lists.
+    // SCHEME / NEW_MODEL / REQUESTED — merged lists.
     if (!savedRows) return { dataRemoved: false, tracked: false };
     const others = await this.prisma.importRecord.findMany({ where: { type: record.type } });
     const keep = new Set<string>();
@@ -210,7 +213,12 @@ export class ImportRunnerService {
       for (const r of rowsOf(other) ?? []) keep.add(`${r.article}::${r.colour}`);
     }
     const remove = savedRows.filter((r) => !keep.has(`${r.article}::${r.colour}`));
-    const delegate = record.type === 'SCHEME' ? this.prisma.schemeEntry : this.prisma.newModelEntry;
+    const delegate =
+      record.type === 'SCHEME'
+        ? this.prisma.schemeEntry
+        : record.type === 'REQUESTED'
+          ? this.prisma.requestedEntry
+          : this.prisma.newModelEntry;
     for (let i = 0; i < remove.length; i += 500) {
       const chunk = remove.slice(i, i + 500);
       await (delegate as typeof this.prisma.schemeEntry).deleteMany({

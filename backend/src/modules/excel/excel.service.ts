@@ -187,7 +187,7 @@ export class ExcelService {
     return { total, rows, errors };
   }
 
-  buildTemplate(type: 'stock' | 'scheme' | 'new-model' | 'master'): Buffer {
+  buildTemplate(type: 'stock' | 'scheme' | 'new-model' | 'requested' | 'master'): Buffer {
     const templates = {
       master: {
         sheetName: 'MASTER EXCEL',
@@ -218,6 +218,15 @@ export class ExcelService {
       },
       'new-model': {
         sheetName: 'NEW MODEL',
+        header: ['Article', 'Colour'],
+        sample: [
+          ['SS5013', 'BRWN'],
+          ['JM1266', 'BRWN'],
+          ['JB3803', 'GREY'],
+        ],
+      },
+      requested: {
+        sheetName: 'REQUESTED PHOTOS',
         header: ['Article', 'Colour'],
         sample: [
           ['SS5013', 'BRWN'],

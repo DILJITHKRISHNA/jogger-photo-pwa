@@ -20,6 +20,7 @@ import { ImportsModule } from './modules/imports/imports.module';
 import { StockModule } from './modules/stock/stock.module';
 import { SchemeModule } from './modules/scheme/scheme.module';
 import { NewModelsModule } from './modules/new-models/new-models.module';
+import { RequestedPhotosModule } from './modules/requested-photos/requested-photos.module';
 import { MasterModule } from './modules/master/master.module';
 import { CatalogueModule } from './modules/catalogue/catalogue.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
@@ -55,6 +56,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     StockModule,
     SchemeModule,
     NewModelsModule,
+    RequestedPhotosModule,
     MasterModule,
     CatalogueModule,
     DashboardModule,

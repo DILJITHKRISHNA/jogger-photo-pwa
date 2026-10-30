@@ -86,6 +86,11 @@ export class CatalogueController {
     return this.catalogue.newModelGallery();
   }
 
+  @Get('requested')
+  requestedGallery() {
+    return this.catalogue.requestedGallery();
+  }
+
   @Get('check')
   @Roles(Role.ADMIN)
   check(@Query('article') article: string, @Query('colour') colour: string) {

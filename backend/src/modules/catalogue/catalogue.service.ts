@@ -197,8 +197,19 @@ export class CatalogueService {
     return items.sort((a, b) => a.article.localeCompare(b.article));
   }
 
-  async newModelGallery(): Promise<ProductView[]> {
-    const newModels = await this.prisma.newModelEntry.findMany();
+  newModelGallery(): Promise<ProductView[]> {
+    return this.listGallery(this.prisma.newModelEntry.findMany());
+  }
+
+  requestedGallery(): Promise<ProductView[]> {
+    return this.listGallery(this.prisma.requestedEntry.findMany());
+  }
+
+  /** Photos for an Article + Colour list (New Model, Requested Photos), sorted by article. */
+  private async listGallery(
+    entriesQuery: Promise<Array<{ article: string; colour: string }>>,
+  ): Promise<ProductView[]> {
+    const entries = await entriesQuery;
     const products = await this.prisma.product.findMany({
       where: { active: true },
       include: { category: true },
@@ -206,7 +217,7 @@ export class CatalogueService {
     const byKey = new Map(products.map((p) => [`${p.article}::${p.colour}`, p]));
 
     const matched: ProductWithCategory[] = [];
-    for (const entry of newModels) {
+    for (const entry of entries) {
       const product = byKey.get(`${entry.article}::${entry.colour}`);
       if (product) matched.push(product);
     }
@@ -219,7 +230,7 @@ export class CatalogueService {
     const a = normalizeArticle(article);
     const c = normalizeColour(colour);
 
-    const [product, inStock, inScheme, isNewModel] = await Promise.all([
+    const [product, inStock, inScheme, isNewModel, isRequested] = await Promise.all([
       this.prisma.product.findUnique({
         where: { article_colour: { article: a, colour: c } },
         include: { category: true },
@@ -227,6 +238,7 @@ export class CatalogueService {
       this.prisma.stockEntry.findFirst({ where: { article: a, colour: c } }),
       this.prisma.schemeEntry.findUnique({ where: { article_colour: { article: a, colour: c } } }),
       this.prisma.newModelEntry.findUnique({ where: { article_colour: { article: a, colour: c } } }),
+      this.prisma.requestedEntry.findUnique({ where: { article_colour: { article: a, colour: c } } }),
     ]);
 
     return {
@@ -238,6 +250,7 @@ export class CatalogueService {
       inStock: Boolean(inStock),
       inScheme: Boolean(inScheme),
       isNewModel: Boolean(isNewModel),
+      isRequested: Boolean(isRequested),
     };
   }
 
