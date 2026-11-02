@@ -244,7 +244,31 @@ function saveBlob(blob: Blob, filename: string): void {
 export async function downloadPhoto(photo: ShareablePhoto): Promise<void> {
   const response = await fetch(resolveMediaUrl(photo.url));
   if (!response.ok) throw new Error(`Could not load ${photo.filename}`);
-  saveBlob(await response.blob(), photo.filename);
+  const blob = await response.blob();
+  // Photos are stored as WebP, which some apps don't treat as a normal photo
+  // (WhatsApp can turn one into a sticker) — the saved copy is a JPEG.
+  if (blob.type === "image/webp" || /\.webp$/i.test(photo.filename)) {
+    const jpeg = await toFullSizeJpeg(blob).catch(() => null);
+    if (jpeg) return saveBlob(jpeg, jpegName(photo.filename));
+  }
+  saveBlob(blob, photo.filename);
+}
+
+/** Re-encodes an image as a high-quality JPEG at its full size. */
+async function toFullSizeJpeg(blob: Blob): Promise<Blob> {
+  const bitmap = await createImageBitmap(blob, { imageOrientation: "from-image" });
+  const canvas = document.createElement("canvas");
+  canvas.width = bitmap.width;
+  canvas.height = bitmap.height;
+  const context = canvas.getContext("2d")!;
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.drawImage(bitmap, 0, 0);
+  bitmap.close();
+  const jpeg = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.9));
+  canvas.width = canvas.height = 0;
+  if (!jpeg) throw new Error("Could not convert photo");
+  return jpeg;
 }
 
 type ShareOutcome = "shared" | "cancelled" | "needs-tap";
