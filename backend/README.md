@@ -137,6 +137,21 @@ containers like Render's have an ephemeral filesystem, so local-disk photos
 disappear on every restart/spin-down while the database still points at
 them (the image then renders as just its alt text).
 
+Every photo is stored as a **compressed WebP** (max 1600 px, ~80% quality,
+typically 150–350 KB) so galleries load fast, whatever format the admin
+uploads. Share, Download and the ZIP still hand out **JPEG** copies, since
+some apps don't treat WebP as a normal photo (WhatsApp can make it a sticker).
+
+Photos uploaded before WebP was introduced are converted with a one-off
+script. It keeps every original where it is as a backup and logs each change
+to `uploads/webp-conversion-log.json`, so it can be undone:
+
+```bash
+docker compose exec api node dist/scripts/convert-photos-to-webp.js --dry-run   # report only
+docker compose exec api node dist/scripts/convert-photos-to-webp.js             # convert
+docker compose exec api node dist/scripts/convert-photos-to-webp.js --undo      # back to the originals
+```
+
 ## Scripts
 
 | Script | What it does |

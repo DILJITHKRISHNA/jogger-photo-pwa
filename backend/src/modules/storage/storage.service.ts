@@ -8,6 +8,12 @@ export interface PhotoUploadInput {
   key: string; // deterministic Article_Colour key, no extension
   ext: string;
   contentType: string;
+  /**
+   * Remove this Article + Colour's photo stored under another extension
+   * (default). The WebP conversion script turns this off so the originals
+   * stay where they are, as a backup.
+   */
+  replaceOtherFormats?: boolean;
 }
 
 export interface PhotoUploadResult {
@@ -103,7 +109,7 @@ export class StorageService implements OnModuleInit {
     // duplicate it under a different extension. Checks the four known
     // extensions directly instead of listing the whole uploads folder.
     await Promise.all(
-      PHOTO_EXTENSIONS.filter((ext) => ext !== input.ext).map((ext) =>
+      this.otherFormats(input).map((ext) =>
         fs.unlink(path.join(UPLOADS_DIR, `${input.key}.${ext}`)).catch(() => undefined),
       ),
     );
@@ -122,9 +128,7 @@ export class StorageService implements OnModuleInit {
 
     // Replace any existing photo for this Article + Colour stored under a
     // different extension (missing objects are ignored by Supabase).
-    const stale = PHOTO_EXTENSIONS.filter((ext) => ext !== input.ext).map(
-      (ext) => `${input.key}.${ext}`,
-    );
+    const stale = this.otherFormats(input).map((ext) => `${input.key}.${ext}`);
     await this.removeObjects(sb, stale).catch(() => undefined);
 
     const res = await fetch(
@@ -153,6 +157,12 @@ export class StorageService implements OnModuleInit {
     return {
       url: `${this.publicUrlPrefix(sb)}${encodeURIComponent(objectPath)}?v=${Date.now()}`,
     };
+  }
+
+  /** The extensions an upload replaces — none when the caller keeps other formats. */
+  private otherFormats(input: PhotoUploadInput): string[] {
+    if (input.replaceOtherFormats === false) return [];
+    return PHOTO_EXTENSIONS.filter((ext) => ext !== input.ext);
   }
 
   private async removeObjects(

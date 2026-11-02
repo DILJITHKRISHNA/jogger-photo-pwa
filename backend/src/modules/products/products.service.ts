@@ -3,7 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { normalizeArticle, normalizeColour } from '../../common/util/product-key';
 import { fileSafeKey, parsePhotoFilename } from '../../common/util/parse-photo-filename';
-import { compressPhoto } from '../../common/util/compress-photo';
+import { photoToWebp } from '../../common/util/compress-photo';
 import { slugify } from '../categories/categories.service';
 
 export interface PhotoUploadFile {
@@ -117,12 +117,18 @@ export class ProductsService {
         });
 
         const key = fileSafeKey(parsed.article, parsed.colour);
-        const { url } = await this.storage.uploadPhoto({
-          key,
-          ext: parsed.ext,
-          buffer: await compressPhoto(file.buffer, parsed.ext),
-          contentType: file.mimetype || CONTENT_TYPES[parsed.ext] || 'application/octet-stream',
-        });
+        // Stored as a compressed WebP; a file that can't be decoded is kept as uploaded.
+        const webp = await photoToWebp(file.buffer);
+        const { url } = await this.storage.uploadPhoto(
+          webp
+            ? { key, ext: 'webp', buffer: webp, contentType: 'image/webp' }
+            : {
+                key,
+                ext: parsed.ext,
+                buffer: file.buffer,
+                contentType: file.mimetype || CONTENT_TYPES[parsed.ext] || 'application/octet-stream',
+              },
+        );
 
         const tags = hasMaster
           ? (tagsByKey.get(`${parsed.article}::${parsed.colour}`) ?? {

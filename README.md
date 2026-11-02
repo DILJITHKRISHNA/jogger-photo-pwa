@@ -5,18 +5,20 @@ A mobile-first footwear product photo PWA: sales executives **search → view
 library and daily Stock / Scheme / New Model Excel imports from a matching
 admin panel.
 
-Built as a **separate frontend + backend**, on the same stack as this
+Built as a **separate frontend + backend**, on the same core stack as this
 workspace's `car-wash-erp` reference project — NestJS + Prisma/PostgreSQL +
-Redis + JWT auth + Docker on the backend, Next.js + Tailwind + shadcn on the
-frontend — sized to what this app actually needs. Unlike the reference
-project's dashboard (which is largely UI wired to mock data while its
-backend is still mid-build), **every screen here is wired to the real API**:
-there is no mock/demo data path in the frontend.
+JWT auth + Docker on the backend, Next.js + Tailwind + shadcn on the
+frontend — trimmed to what this app actually needs (no Redis, no S3, no
+branches/queues/WhatsApp — see [Auth](#auth--what-is-real-vs-a-placeholder)
+and `backend/README.md` for why). Unlike the reference project's dashboard
+(which is largely UI wired to mock data while its backend is still
+mid-build), **every screen here is wired to the real API**: there is no
+mock/demo data path in the frontend.
 
 ```
 frontend/    Next.js app — executive PWA + admin panel, calls the API directly
 backend/     NestJS API — auth, photo catalogue, Excel imports, storage
-docker-compose.yml   postgres + redis + api, for local/prod parity
+docker-compose.yml   postgres + api, for local/prod parity
 ```
 
 ## Quick start
@@ -24,7 +26,7 @@ docker-compose.yml   postgres + redis + api, for local/prod parity
 **1. Backend** (see [`backend/README.md`](backend/README.md) for detail):
 
 ```bash
-docker compose up -d postgres redis    # or run your own local Postgres/Redis
+docker compose up -d postgres    # or run your own local Postgres
 cd backend
 npm install
 cp .env.example .env
@@ -44,10 +46,10 @@ npm run dev                            # http://localhost:3010
 
 Sign in:
 
-| Role | URL | Phone | Password |
+| Role | URL | Email | Password |
 |---|---|---|---|
-| Executive | `/login` | `9000000001` | `ChangeMe123!` |
-| Admin | `/admin/login` | `9999999999` | `ChangeMe123!` |
+| Executive | `/login` | `user@example.com` | `ChangeMe123!` |
+| Admin | `/admin/login` | `admin@example.com` | `ChangeMe123!` |
 
 (Change these via `SEED_ADMIN_*` / `SEED_EXEC_*` before seeding, or create
 more users the same way.)
@@ -55,16 +57,19 @@ more users the same way.)
 ## What's implemented (mapped to the brief)
 
 **Executive app** — Single Article search, Category ("Bulk Photos"), Today's
-Stock, Scheme Article, New Model. Photo viewer with large image +
-Share/Download. Bulk galleries support select-one/select-multiple/select-all,
+Stock, Scheme Article, New Model, Requested Photos. Photo viewer with large image +
+Share/Download. Bulk galleries and Search results support select-one/select-multiple/select-all (Search can also select one article's colours at a time),
 native Share (WhatsApp/Instagram/Telegram/…) via the Web Share API, and a
-server-built ZIP for large selections. Bottom nav limited to 4 tabs (Home,
-Search, Bulk Photos, Today's Stock); Scheme/New Model are reachable from
+server-built ZIP for large selections. **Share as link** sends any number of
+photos as one link (Android's share sheet takes only 10 photos at a time): the
+customer opens `/s/<token>` without signing in, views and saves the photos or
+"Save all" straight to their phone gallery (no ZIP); links expire after 7 days. Bottom nav limited to 4 tabs (Home,
+Search, Bulk Photos, Today's Stock); Scheme/New Model/Requested Photos are reachable from
 Home. No stock quantity, pricing or other confidential data is ever sent to
 the executive-facing API.
 
 **Admin panel** (`/admin`) — Photo upload (bulk, filename-driven), Stock /
-Scheme / New Model Excel upload with downloadable templates, Category
+Scheme / New Model / Requested Photos Excel upload with downloadable templates, Category
 management (add/rename/hide/delete), Search/Check (full Article+Colour
 status lookup), Import History with per-row error detail and CSV export,
 and a dashboard (photo/stock/scheme/new-model counts, last update, import
@@ -90,6 +95,20 @@ seed script (or, in future, an admin "create user" endpoint), matching the
 photo-hub brief's "keep it simple" instruction while still using real
 per-user credentials rather than one shared password.
 
+JWT stays even though logins are a small, fixed set — it's zero extra
+infrastructure (refresh tokens hash into the same Postgres `users` table,
+no Redis/session store involved), and buys real revocation + short-lived
+access tokens over a plain long-lived session cookie. Redis and S3 *were*
+extra infrastructure with no use this app needed, so they're not here at
+all — not even as an optional path.
+
+## Deploying
+
+Render (Docker) for the backend + [Neon](https://neon.tech)/Supabase/Render
+for Postgres, Vercel for the frontend. Full walkthrough, including the
+production-only cookie setting and where to put `NEXT_PUBLIC_API_URL`, in
+[`backend/README.md`](backend/README.md#deploying).
+
 ## Known limitations / follow-ups
 
 - **Demo photos are placeholder art** (`backend/prisma/seed.ts` draws
@@ -100,12 +119,9 @@ per-user credentials rather than one shared password.
 - **`xlsx` (SheetJS) has a known, unpatched-on-npm advisory.** Risk is
   limited — it only parses admin-uploaded files, behind admin auth. See
   `backend/README.md` for detail and the SheetJS-direct patched-build option.
-- Scheme/New Model uploads **merge** into the existing list (add/update,
+- Scheme/New Model/Requested Photos uploads **merge** into the existing list (add/update,
   never remove); only the Stock upload **fully replaces** the list, matching
   "Today's Stock" semantics from the brief.
-- Redis is wired up (dashboard-stats cache today) but, like the reference
-  project's Redis, most of its intended use (queues, pub/sub) isn't needed
-  by this app yet — the connection is there for later without a rework.
 - Seeding a freshly-`docker compose up`'d stack runs the seed script from
   the host (the production API image trims dev tooling), so its placeholder
   demo photos land outside the container's upload volume — one `docker cp`

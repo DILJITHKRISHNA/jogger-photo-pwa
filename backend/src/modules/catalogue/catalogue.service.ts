@@ -3,6 +3,7 @@ import archiver from 'archiver';
 import { PassThrough } from 'node:stream';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import sharp from 'sharp';
 import { PrismaService } from '../../prisma/prisma.service';
 import { normalizeArticle, normalizeColour } from '../../common/util/product-key';
 import { uniqueSizes } from '../../common/util/sizes';
@@ -284,7 +285,14 @@ export class CatalogueService {
           const buffer = item.url.startsWith('/uploads/')
             ? await fs.readFile(path.join(process.cwd(), item.url.replace(/^\//, '')))
             : Buffer.from(await (await fetch(item.url)).arrayBuffer());
-          archive.append(buffer, { name: uniqueName(item.name) });
+          // Photos are stored as WebP, which some apps don't treat as a normal
+          // photo (WhatsApp can turn it into a sticker) — the ZIP gets JPEGs.
+          if (/\.webp$/i.test(item.name)) {
+            const jpeg = await sharp(buffer, { failOn: 'none' }).jpeg({ quality: 90, mozjpeg: true }).toBuffer();
+            archive.append(jpeg, { name: uniqueName(item.name.replace(/\.webp$/i, '.jpg')) });
+          } else {
+            archive.append(buffer, { name: uniqueName(item.name) });
+          }
         } catch {
           // skip a photo that failed to load rather than failing the whole ZIP
         }
